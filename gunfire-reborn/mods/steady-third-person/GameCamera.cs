@@ -1,94 +1,426 @@
-using System.Reflection;
-using Il2CppInterop.Runtime.InteropTypes;
+using BepInEx.Configuration;
+using BepInEx.Logging;
+using Cinemachine;
+using Game;
+using HarmonyLib;
+using HeroCameraName;
+using HeroMoveState;
 using UnityEngine;
 
 namespace SteadyThirdPerson;
 
-internal sealed class GameCamera
+internal sealed class GameCamera : IDisposable
 {
-    private const BindingFlags Static = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
-    private const BindingFlags Instance = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+    private static GameCamera? active;
+    private readonly Harmony harmony = new(Plugin.Id);
+    private readonly ManualLogSource log;
+    private readonly ConfigEntry<int> fieldOfView;
+    private readonly ConfigEntry<float> cameraHeight;
+    private readonly ConfigEntry<bool> levelHorizon;
+    private readonly ConfigEntry<int> rollReduction;
+    private readonly CloseShoulderSettings shoulder;
+    private readonly ChaseAvatar avatar;
 
-    private readonly PropertyInfo localHero;
-    private readonly PropertyInfo downedComponent;
-    private readonly PropertyInfo isDowned;
-    private readonly PropertyInfo cameraMode;
-    private readonly PropertyInfo thirdPersonCamera;
-    private readonly MethodInfo isNormal;
-    private readonly MethodInfo requestThirdPerson;
-    private readonly MethodInfo hasThirdPersonRequests;
-    private readonly MethodInfo enterThirdPerson;
-    private readonly MethodInfo enterFirstPerson;
-    private readonly object firstPersonMode;
-    private readonly object thirdPersonMode;
-    private readonly object freeCamera;
+    private NewPlayerObject? owner;
+    private Camera? presentedCamera;
+    private Quaternion nativeRotation;
+    private Quaternion appliedRotation;
+    private float nativeFov;
+    private float appliedFov;
+    private float referenceFov;
+    private float shoulderWeight;
+    private bool presentationFailed;
+    private bool reportedAimFailure;
+#if DEBUG
+    private bool reportedLeftBlend;
+    private bool reportedBackwardBlend;
+    private int traceBoomFrame = -1;
+    private float? traceBoomStartYaw;
+    private float? traceBoomDelta;
 
-    internal GameCamera()
+    internal MovementTrace? Trace { get; set; }
+    private bool Tracing => Trace is not null;
+    internal float? TraceBoomYaw => traceBoomFrame == Time.frameCount ? traceBoomDelta : null;
+    internal (string View, float ShoulderBlend, int DistancePercent) TraceView => CameraManager.CurCameraMode == CameraMode.FPS
+        ? ("first_person", 0f, 100)
+        : !UsesChaseCamera
+            ? ("native_third_person", 0f, 100)
+            : (shoulder.Enabled.Value ? "close_shoulder" : "centered_chase", shoulderWeight, shoulder.Distance.Value);
+#endif
+
+    internal delegate (Quaternion Rotation, float Fov) Presentation(Quaternion rotation, float nativeFov,
+        float referenceFov, float horizontalFov, float aspect, float rollReduction);
+
+    internal Presentation Framing { get; set; } = CameraFraming.Evaluate;
+    internal Func<Ray, Transform, Transform, Ray> RebaseAimRay { get; set; } = CameraFraming.RebaseAimRay;
+    internal Func<Vector3, Vector3> CenterOffset { get; set; } = CameraFraming.CenterOffset;
+    internal Func<Vector3, float, float, int, (Vector3 Socket, float ArmScale)> ShoulderFrame { get; set; } =
+        CameraFraming.PlaceShoulder;
+
+    internal GameCamera(ManualLogSource log, ConfigEntry<int> fieldOfView, ConfigEntry<float> cameraHeight,
+        ConfigEntry<bool> levelHorizon, ConfigEntry<int> rollReduction, CloseShoulderSettings shoulder)
     {
-        var game = Assembly.Load("Assembly-CSharp");
-        var motion = FindType(game, "CharacterMotionManager");
-        var cameras = FindType(game, "CameraManager");
-        var heroCameras = FindType(game, "HeroCameraManager");
-        var tpsMode = FindType(game, "TpsMode");
-
-        localHero = RequireProperty(motion, "HeroObj", Static);
-        var hero = localHero.PropertyType;
-        downedComponent = RequireProperty(hero, "FakerDeadCom", Instance);
-        isDowned = RequireProperty(downedComponent.PropertyType, "IsFakerDead", Instance);
-        cameraMode = RequireProperty(cameras, "CurCameraMode", Static);
-        thirdPersonCamera = RequireProperty(cameras, "TpsCamera", Static);
-
-        isNormal = RequireMethod(heroCameras, "InNormal", Static);
-        requestThirdPerson = RequireMethod(hero, "ChangeTpsState", Instance, typeof(bool), typeof(string));
-        hasThirdPersonRequests = RequireMethod(hero, "IsMoreTpsState", Instance);
-        enterThirdPerson = RequireMethod(heroCameras, "ChangeToTpsMode", Static, tpsMode, typeof(AnimationCurve));
-        enterFirstPerson = RequireMethod(heroCameras, "ChangeToFpsMode", Static, typeof(AnimationCurve));
-        firstPersonMode = Enum.Parse(cameraMode.PropertyType, "FPS");
-        thirdPersonMode = Enum.Parse(cameraMode.PropertyType, "TPS");
-        freeCamera = Enum.Parse(tpsMode, "FREE");
+        this.log = log;
+        this.fieldOfView = fieldOfView;
+        this.cameraHeight = cameraHeight;
+        this.levelHorizon = levelHorizon;
+        this.rollReduction = rollReduction;
+        this.shoulder = shoulder;
+        avatar = new ChaseAvatar(log);
     }
 
-    internal Il2CppObjectBase? LocalHero => localHero.GetValue(null) as Il2CppObjectBase;
-
-    internal bool CanSwitch(Il2CppObjectBase hero)
+    internal void Install()
     {
-        if (isNormal.Invoke(null, null) is not true)
-            return false;
+        var boom = AccessTools.Method(typeof(CameraBoom), nameof(CameraBoom.LateUpdate));
+        var brain = AccessTools.Method(typeof(CinemachineBrain), nameof(CinemachineBrain.LateUpdate));
+        var rotation = AccessTools.Method(typeof(ETCTransformCtrl), nameof(ETCTransformCtrl.CheckRotateUpdate));
+        var locomotion = AccessTools.Method(typeof(HeroMoveStateBase), nameof(HeroMoveStateBase.SetTpsAni));
+        harmony.Patch(boom, prefix: Hook(nameof(CenterBoom)), postfix: Hook(nameof(AfterBoom)));
+        harmony.Patch(brain, postfix: Hook(nameof(AfterBrain)));
+        harmony.Patch(rotation, prefix: Hook(nameof(FaceAim)), postfix: Hook(nameof(RestoreRotationSettings)));
+        harmony.Patch(locomotion, postfix: Hook(nameof(KeepStrafeBlendSigned)));
+        ShoulderAim.Install(harmony);
+        active = this;
 
-        var component = downedComponent.GetValue(hero);
-        return component is null || isDowned.GetValue(component) is false;
+        static HarmonyMethod Hook(string method) => new(typeof(GameCamera), method);
     }
 
-    internal bool IsFirstPerson => Equals(cameraMode.GetValue(null), firstPersonMode);
+    internal bool CanAcceptInput => NormalCamera(CharacterMotionManager.HeroObj) is not null && HeroCameraManager.canOP();
 
-    internal Transform? ActiveThirdPersonCamera => Equals(cameraMode.GetValue(null), thirdPersonMode)
-        ? thirdPersonCamera.GetValue(null) as Transform
-        : null;
+    private bool UsesChaseCamera => owner is not null && CameraManager.CurCameraMode == CameraMode.TPS
+        && CameraManager.CurTpsMode == TpsMode.FREE;
 
-    internal void Enter(Il2CppObjectBase hero, float seconds)
+    internal static GameCamera? Active => active;
+
+    internal Camera? ShoulderAimCamera => shoulderWeight > 0f && !presentationFailed && UsesChaseCamera
+        && owner is { } hero && CharacterMotionManager.HeroObj?.Pointer == hero.Pointer
+        && presentedCamera && NormalCamera(hero) is not null ? presentedCamera : null;
+
+    internal void UpdateRequest(bool enabled, bool gameplayInput, float seconds)
     {
-        requestThirdPerson.Invoke(hero, new object[] { true, Plugin.Id });
-        var blend = AnimationCurve.EaseInOut(0f, 0f, seconds, 1f);
-        enterThirdPerson.Invoke(null, new[] { freeCamera, blend });
-    }
-
-    internal void Leave(Il2CppObjectBase hero, float seconds)
-    {
-        requestThirdPerson.Invoke(hero, new object[] { false, Plugin.Id });
-        if (hasThirdPersonRequests.Invoke(hero, null) is false)
+        var hero = CharacterMotionManager.HeroObj;
+        if (owner is not null && hero?.Pointer != owner.Pointer)
         {
-            var blend = AnimationCurve.EaseInOut(0f, 1f, seconds, 0f);
-            enterFirstPerson.Invoke(null, new object[] { blend });
+            owner = null;
+            RestorePresentation();
+        }
+
+        var normal = NormalCamera(hero);
+        float targetWeight = shoulder.Enabled.Value ? 1f : 0f;
+        shoulderWeight = owner is not null
+            ? Mathf.MoveTowards(shoulderWeight, targetWeight, Time.unscaledDeltaTime / seconds)
+            : targetWeight;
+        avatar.Update(enabled && UsesChaseCamera && normal is not null ? hero : null);
+        if (normal is null || !gameplayInput)
+            return;
+
+        if (!enabled)
+        {
+            Release(normal, seconds);
+            return;
+        }
+
+        if (normal.isChanging || CameraManager.CurCameraMode != CameraMode.FPS || normal.tarCamMode != CameraMode.FPS)
+            return;
+
+        if (owner is null)
+        {
+            hero!.ChangeTpsState(true, Plugin.Id);
+            owner = hero;
+        }
+
+        HeroCameraManager.ChangeToTpsMode(TpsMode.FREE, seconds);
+        log.LogInfo("Centered Chase entered.");
+    }
+
+    private static NormalCS? NormalCamera(NewPlayerObject? hero)
+    {
+        if (hero is null || hero.FakerDeadCom?.IsFakerDead == true || !HeroCameraManager.InNormal())
+            return null;
+        return HeroCameraManager.CSObject?.TryCast<NormalCS>();
+    }
+
+    private void Release(NormalCS normal, float seconds)
+    {
+        if (owner is null)
+            return;
+        RestorePresentation();
+        var hero = owner;
+        hero.ChangeTpsState(false, Plugin.Id);
+        owner = null;
+        if (!hero.IsMoreTpsState() && (CameraManager.CurCameraMode == CameraMode.TPS || normal.tarCamMode == CameraMode.TPS))
+            normal.ChangeToFpsMode(seconds);
+        log.LogInfo("Centered Chase released.");
+    }
+
+    private bool OwnsBoom(CameraBoom boom)
+    {
+        return owner is not null && !presentationFailed
+            && CharacterMotionManager.HeroObj?.Pointer == owner.Pointer
+            && NormalCamera(owner)?.tpsCamBoom?.Pointer == boom.Pointer
+            && CameraManager.CurTpsMode == TpsMode.FREE;
+    }
+
+    private static void FaceAim(ETCTransformCtrl __instance, out (bool Applied, bool Orient, bool Yaw) __state)
+    {
+        __state = default;
+        if (active is not { UsesChaseCamera: true, owner: { } hero }
+            || ETCTransformCtrl.CharacterETCCtrl != __instance
+            || CharacterMotionManager.HeroObj?.Pointer != hero.Pointer
+            || NormalCamera(hero) is null)
+            return;
+
+        __state = (true, __instance.OrientRotationToMovement, __instance.UseControllerRotationYaw);
+        __instance.OrientRotationToMovement = false;
+        __instance.UseControllerRotationYaw = true;
+    }
+
+    private static void RestoreRotationSettings(ETCTransformCtrl __instance, (bool Applied, bool Orient, bool Yaw) __state)
+    {
+        if (__state.Applied)
+        {
+            __instance.OrientRotationToMovement = __state.Orient;
+            __instance.UseControllerRotationYaw = __state.Yaw;
         }
     }
 
-    private static Type FindType(Assembly assembly, string name) =>
-        assembly.GetType(name) ?? assembly.GetType($"HeroCameraName.{name}")
-        ?? throw new TypeLoadException($"Assembly-CSharp is missing {name}.");
+    private static void KeepStrafeBlendSigned(float speedRate)
+    {
+        if (speedRate <= 0f || active is not { UsesChaseCamera: true, owner: { } hero } camera
+            || CharacterMotionManager.HeroObj?.Pointer != hero.Pointer || NormalCamera(hero) is null)
+            return;
 
-    private static PropertyInfo RequireProperty(Type type, string name, BindingFlags flags) =>
-        type.GetProperty(name, flags) ?? throw new MissingMemberException(type.FullName, name);
+        var motion = CharacterMotionManager.HMData;
+        var root = hero.gameTrans;
+        var animator = hero.PlayerCom?.TPSAnimator;
+        if (motion is null || !root || !animator)
+            return;
 
-    private static MethodInfo RequireMethod(Type type, string name, BindingFlags flags, params Type[] parameters) =>
-        type.GetMethod(name, flags, null, parameters, null) ?? throw new MissingMethodException(type.FullName, name);
+        var direction = motion.Direction;
+        var forward = root.forward;
+        direction.y = 0f;
+        forward.y = 0f;
+        direction.Normalize();
+        forward.Normalize();
+        var right = Vector3.Cross(Vector3.up, forward);
+        float x = Vector3.Dot(direction, right);
+        float y = Vector3.Dot(direction, forward);
+
+        // The native local animator clamps negative components to zero. The spectator
+        // animator uses the signed components, so restore only the discarded directions.
+        const float directionThreshold = -0.001f;
+        if (x < directionThreshold)
+        {
+            AnimatorInterface.SetFloatWithAnimator(animator!, AnimatorEvent.MoveDirX, Mathf.Max(-1f, x * speedRate));
+#if DEBUG
+            if (!camera.reportedLeftBlend)
+            {
+                camera.reportedLeftBlend = true;
+                camera.log.LogInfo("Centered Chase applied the signed left animation blend.");
+            }
+#endif
+        }
+        if (y < directionThreshold)
+        {
+            AnimatorInterface.SetFloatWithAnimator(animator!, AnimatorEvent.MoveDirY, Mathf.Max(-1f, y * speedRate));
+#if DEBUG
+            if (!camera.reportedBackwardBlend)
+            {
+                camera.reportedBackwardBlend = true;
+                camera.log.LogInfo("Centered Chase applied the signed backward animation blend.");
+            }
+#endif
+        }
+    }
+
+    private static void CenterBoom(CameraBoom __instance, out BoomSettings __state)
+    {
+        __state = default;
+        if (active is not { } camera)
+            return;
+        try
+        {
+            if (!camera.OwnsBoom(__instance))
+                return;
+            var config = __instance.CurrentCameraBoomConfig;
+            if (config is null || config.TpsMode != TpsMode.FREE)
+                return;
+#if DEBUG
+            if (camera.Tracing)
+            {
+                camera.traceBoomFrame = Time.frameCount;
+                camera.traceBoomDelta = null;
+                camera.traceBoomStartYaw = HeroCtrlMgr.Controller?.parent?.localEulerAngles.y;
+            }
+#endif
+            var offset = config.SocketOffset;
+            var pivot = __instance.DefaultOffset;
+            float armLength = config.TargetArmLength;
+            __state = new BoomSettings(config, offset, pivot, armLength, config.FocusSpeed);
+            var (framing, armScale) = camera.ShoulderFrame(camera.CenterOffset(offset),
+                camera.shoulderWeight, camera.shoulder.Offset.Value, camera.shoulder.Distance.Value);
+            float height = framing.y - offset.y + camera.cameraHeight.Value - CameraFraming.DefaultHeight;
+            // Virtual cameras follow the boom pivot. The regular boom uses its socket directly.
+            if (__instance.BrainEnabled)
+            {
+                __instance.DefaultOffset = new Vector3(pivot.x, pivot.y + height, pivot.z);
+                framing.y = offset.y;
+            }
+            else
+            {
+                framing.y = offset.y + height;
+            }
+            config.SocketOffset = framing;
+            // The native boom still computes the collision-constrained camera position.
+            config.TargetArmLength = armLength * armScale;
+            // Free TPS normally turns the view toward the follow target when movement opens a gap.
+            config.FocusSpeed = 0f;
+        }
+        catch (Exception error)
+        {
+            camera.StopPresentation(error);
+        }
+    }
+
+    private static void AfterBoom(CameraBoom __instance, BoomSettings __state)
+    {
+        if (active is not { } camera)
+            return;
+        try
+        {
+            if (__state.Config is not null)
+            {
+                __state.Config.SocketOffset = __state.SocketOffset;
+                __state.Config.TargetArmLength = __state.ArmLength;
+                __state.Config.FocusSpeed = __state.FocusSpeed;
+                __instance.DefaultOffset = __state.PivotOffset;
+#if DEBUG
+                if (camera.Tracing && camera.traceBoomFrame == Time.frameCount
+                    && camera.traceBoomStartYaw is float start
+                    && HeroCtrlMgr.Controller?.parent?.localEulerAngles.y is float end)
+                    camera.traceBoomDelta = Mathf.DeltaAngle(start, end);
+#endif
+                if (!__instance.BrainEnabled)
+                    camera.Present(CameraManager.TpsCameraCom);
+            }
+        }
+        catch (Exception error)
+        {
+            camera.StopPresentation(error);
+        }
+    }
+
+    private readonly record struct BoomSettings(CameraBoomConfig? Config, Vector3 SocketOffset,
+        Vector3 PivotOffset, float ArmLength, float FocusSpeed);
+
+    private static void AfterBrain(CinemachineBrain __instance)
+    {
+        if (active is not { owner: not null } camera)
+            return;
+        try
+        {
+            camera.Present(__instance.OutputCamera);
+        }
+        catch (Exception error)
+        {
+            camera.StopPresentation(error);
+        }
+    }
+
+    private void Present(Camera? output)
+    {
+        if (presentationFailed || owner is null || !output || output != CameraManager.TpsCameraCom)
+            return;
+        if (CameraManager.CurCameraMode != CameraMode.TPS || CameraManager.CurTpsMode != TpsMode.FREE
+            || NormalCamera(owner) is null || CharacterMotionManager.HeroObj?.Pointer != owner.Pointer)
+        {
+            RestorePresentation();
+            return;
+        }
+
+        var view = output!;
+        var rotation = view.transform.rotation;
+        float fov = view.fieldOfView;
+        float targetFov = Mathf.Lerp(fieldOfView.Value, shoulder.FieldOfView.Value, shoulderWeight);
+        if (presentedCamera != view)
+        {
+            RestorePresentation();
+            presentedCamera = view;
+            referenceFov = fov;
+            nativeRotation = rotation;
+            nativeFov = fov;
+            log.LogInfo($"Third person rendering at {targetFov:0.#}° horizontal FOV.");
+        }
+        else
+        {
+            if (!SameRotation(rotation, appliedRotation))
+                nativeRotation = rotation;
+            if (!Mathf.Approximately(fov, appliedFov))
+                nativeFov = fov;
+        }
+
+        (appliedRotation, appliedFov) = Framing(nativeRotation, nativeFov, referenceFov, targetFov,
+            view.aspect, levelHorizon.Value ? rollReduction.Value / 100f : 0f);
+        view.transform.rotation = appliedRotation;
+        view.fieldOfView = appliedFov;
+    }
+
+    private void RestorePresentation()
+    {
+        if (presentedCamera)
+        {
+            var view = presentedCamera!;
+            if (SameRotation(view.transform.rotation, appliedRotation))
+                view.transform.rotation = nativeRotation;
+            if (Mathf.Approximately(view.fieldOfView, appliedFov))
+                view.fieldOfView = nativeFov;
+        }
+
+        presentedCamera = null;
+    }
+
+    private static bool SameRotation(Quaternion left, Quaternion right) =>
+        Mathf.Abs(Quaternion.Dot(left, right)) >= 0.9999999f;
+
+    private void StopPresentation(Exception error)
+    {
+        presentationFailed = true;
+        RestorePresentation();
+        log.LogWarning($"Centered Chase framing stopped: {error.GetBaseException().Message}");
+    }
+
+    internal void ReportAimFailure(Exception error)
+    {
+        if (reportedAimFailure)
+            return;
+        reportedAimFailure = true;
+        log.LogWarning($"Close Shoulder aim error: {error.GetBaseException().Message}");
+    }
+
+    public void Dispose()
+    {
+        try
+        {
+            avatar.Dispose();
+            RestorePresentation();
+            if (owner is { } hero && CharacterMotionManager.HeroObj?.Pointer == hero.Pointer)
+            {
+                if (NormalCamera(hero) is { } normal)
+                    Release(normal, 0.05f);
+                else
+                    hero.ChangeTpsState(false, Plugin.Id);
+            }
+        }
+        catch (Exception error)
+        {
+            log.LogWarning($"Could not release Centered Chase: {error.GetBaseException().Message}");
+        }
+        finally
+        {
+            owner = null;
+            if (active == this)
+                active = null;
+            harmony.UnpatchSelf();
+        }
+    }
 }

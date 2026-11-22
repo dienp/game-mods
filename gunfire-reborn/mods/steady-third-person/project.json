@@ -7,10 +7,18 @@
   "targets": {
     "build": {
       "executor": "nx:run-commands",
+      "cache": false,
       "outputs": ["{projectRoot}/bin/Release/net6.0"],
       "options": {
         "cwd": "gunfire-reborn/mods/steady-third-person",
         "command": "dotnet build SteadyThirdPerson.csproj -c Release --nologo"
+      }
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "gunfire-reborn/mods/steady-third-person",
+        "command": "dotnet watch --no-hot-reload build -c Debug --nologo"
       }
     }
   }

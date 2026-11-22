@@ -3,9 +3,10 @@
 An Nx monorepo with one root folder per game and one library per mod.
 
 - [Gunfire Reborn](gunfire-reborn/README.md)
+  - [Mods Core](gunfire-reborn/mods/core/README.md)
   - [Steady Third Person](gunfire-reborn/mods/steady-third-person/README.md)
 
-Install Node.js 24 and the .NET 8 SDK, then run these commands from the repository root.
+Install Node.js 24 and the .NET 8 SDK. The full build also uses the local game interop assemblies described in [Mods Core](gunfire-reborn/mods/core/README.md). Run these commands from the repository root.
 
 ```powershell
 npm ci

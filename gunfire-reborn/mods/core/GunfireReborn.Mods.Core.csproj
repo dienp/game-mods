@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>0.1.0</Version>
+    <RestoreAdditionalProjectSources>https://nuget.bepinex.dev/v3/index.json;https://nuget.samboy.dev/v3/index.json</RestoreAdditionalProjectSources>
+    <GameDir Condition="'$(GameDir)' == ''">$(GUNFIRE_GAME_DIR)</GameDir>
+    <GameDir Condition="'$(GameDir)' == ''">E:/SteamLibrary/steamapps/common/Gunfire Reborn</GameDir>
+    <GameInteropDir>$(GameDir)/BepInEx/interop</GameInteropDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.791" IncludeAssets="compile" PrivateAssets="all" />
+    <GameReference Include="Assembly-CSharp;Il2Cppmscorlib;Unity.TextMeshPro;UnityEngine.CoreModule;UnityEngine.UI;UnityEngine.UIModule" />
+    <Reference Include="@(GameReference)" HintPath="$(GameInteropDir)/%(Identity).dll" Private="false" />
+  </ItemGroup>
+
+  <Target Name="CheckGameInterop" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(GameInteropDir)/%(GameReference.Identity).dll')"
+           Text="Missing %(GameReference.Identity).dll in $(GameInteropDir). Launch the current game with BepInEx to generate interop assemblies, then set GUNFIRE_GAME_DIR or pass -p:GameDir=... if needed." />
+  </Target>
+</Project>

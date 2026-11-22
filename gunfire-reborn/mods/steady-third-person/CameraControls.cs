@@ -1,8 +1,11 @@
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using Il2CppInterop.Runtime.Attributes;
-using Il2CppInterop.Runtime.InteropTypes;
 using UnityEngine;
+#if DEBUG
+using System.Collections;
+using BepInEx.Unity.IL2CPP.Utils.Collections;
+#endif
 
 namespace SteadyThirdPerson;
 
@@ -10,23 +13,25 @@ public sealed class CameraControls : MonoBehaviour
 {
     private GameCamera? camera;
     private ManualLogSource log = null!;
+    private ConfigEntry<bool> enabledSetting = null!;
     private ConfigEntry<KeyCode> toggleKey = null!;
     private ConfigEntry<float> transition = null!;
-    private ConfigEntry<bool> levelHorizon = null!;
-    private IntPtr owningHero;
+#if DEBUG
+    private MovementTrace? trace;
+#endif
 
     public CameraControls(IntPtr ptr) : base(ptr)
     {
     }
 
     [HideFromIl2Cpp]
-    internal void Initialize(GameCamera gameCamera, ManualLogSource logger, ConfigEntry<KeyCode> key,
-        ConfigEntry<float> transitionSeconds, ConfigEntry<bool> keepLevel)
+    internal void Initialize(GameCamera gameCamera, ManualLogSource logger, ConfigEntry<bool> enabled,
+        ConfigEntry<KeyCode> key, ConfigEntry<float> transitionSeconds)
     {
         log = logger;
+        enabledSetting = enabled;
         toggleKey = key;
         transition = transitionSeconds;
-        levelHorizon = keepLevel;
         camera = gameCamera;
     }
 
@@ -37,90 +42,93 @@ public sealed class CameraControls : MonoBehaviour
 
         try
         {
-            if (!Input.GetKeyDown(toggleKey.Value))
-                return;
-
-            var hero = active.LocalHero;
-            if (hero is null || !active.CanSwitch(hero))
-                return;
-
-            if (owningHero == hero.Pointer)
-            {
-                Release(active, hero);
-            }
-            else if (active.IsFirstPerson)
-            {
-                owningHero = hero.Pointer;
-                active.Enter(hero, transition.Value);
-            }
+            bool gameplayInput = !Cursor.visible && Time.timeScale > 0f;
+#if DEBUG
+            if ((gameplayInput || trace is not null) && Application.isFocused && Input.GetKeyDown(KeyCode.F9))
+                ToggleTrace(active);
+#endif
+            if (gameplayInput && active.CanAcceptInput && Input.GetKeyDown(toggleKey.Value))
+                enabledSetting.Value = !enabledSetting.Value;
+            active.UpdateRequest(enabledSetting.Value, gameplayInput, transition.Value);
         }
         catch (Exception error)
         {
-            Stop(active, error);
-        }
-    }
-
-    private void LateUpdate()
-    {
-        if (camera is not { } active || owningHero == IntPtr.Zero || !levelHorizon.Value)
-            return;
-
-        try
-        {
-            var hero = active.LocalHero;
-            if (hero is null || hero.Pointer != owningHero || !active.CanSwitch(hero))
-                return;
-
-            var view = active.ActiveThirdPersonCamera;
-            if (view == null)
-                return;
-
-            var forward = view.forward;
-            if (Mathf.Abs(forward.y) < 0.999f)
-                view.rotation = Quaternion.LookRotation(forward, Vector3.up);
-        }
-        catch (Exception error)
-        {
-            Stop(active, error);
+#if DEBUG
+            StopTrace();
+#endif
+            camera = null;
+            log.LogWarning($"Centered Chase stopped: {error.GetBaseException().Message}");
+            active.Dispose();
         }
     }
 
     private void OnDestroy()
     {
-        if (camera is { } active)
-            TryRelease(active);
+#if DEBUG
+        StopTrace();
+#endif
+        camera?.Dispose();
     }
 
+#if DEBUG
     [HideFromIl2Cpp]
-    private void Release(GameCamera active, Il2CppObjectBase hero)
+    private void ToggleTrace(GameCamera active)
     {
-        active.Leave(hero, transition.Value);
-        owningHero = IntPtr.Zero;
-    }
-
-    [HideFromIl2Cpp]
-    private void Stop(GameCamera active, Exception error)
-    {
-        camera = null;
-        log.LogWarning($"Camera controls stopped: {error.GetBaseException().Message}");
-        TryRelease(active);
-    }
-
-    [HideFromIl2Cpp]
-    private void TryRelease(GameCamera active)
-    {
-        if (owningHero == IntPtr.Zero)
+        if (trace is not null)
+        {
+            StopTrace();
             return;
-
+        }
         try
         {
-            var hero = active.LocalHero;
-            if (hero?.Pointer == owningHero && active.CanSwitch(hero))
-                Release(active, hero);
+            trace = new MovementTrace(log);
+            active.Trace = trace;
+            StartCoroutine(RecordFrames(active, trace).WrapToIl2Cpp());
         }
         catch (Exception error)
         {
-            log.LogWarning($"Could not release the third-person camera: {error.GetBaseException().Message}");
+            StopTrace();
+            log.LogWarning($"Could not start the movement trace: {error.GetBaseException().Message}");
         }
     }
+
+    [HideFromIl2Cpp]
+    private IEnumerator RecordFrames(GameCamera active, MovementTrace recording)
+    {
+        var nextFrame = new WaitForEndOfFrame();
+        while (ReferenceEquals(trace, recording))
+        {
+            yield return nextFrame;
+            if (!ReferenceEquals(trace, recording))
+                break;
+            try
+            {
+                if (recording.Capture(active))
+                    continue;
+            }
+            catch (Exception error)
+            {
+                log.LogWarning($"Movement trace stopped: {error.GetBaseException().Message}");
+            }
+            StopTrace();
+        }
+    }
+
+    [HideFromIl2Cpp]
+    private void StopTrace()
+    {
+        if (camera is not null)
+            camera.Trace = null;
+        var recording = trace;
+        trace = null;
+        try
+        {
+            recording?.Dispose();
+        }
+        catch (Exception error)
+        {
+            log.LogWarning($"Could not finish writing the movement trace: {error.GetBaseException().Message}");
+        }
+    }
+#endif
 }
