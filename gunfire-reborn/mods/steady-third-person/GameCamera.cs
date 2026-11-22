@@ -14,7 +14,6 @@ internal sealed class GameCamera : IDisposable
     private static GameCamera? active;
     private readonly Harmony harmony = new(Plugin.Id);
     private readonly ManualLogSource log;
-    private readonly ConfigEntry<int> fieldOfView;
     private readonly ConfigEntry<float> cameraHeight;
     private readonly ConfigEntry<bool> levelHorizon;
     private readonly ConfigEntry<int> rollReduction;
@@ -28,12 +27,13 @@ internal sealed class GameCamera : IDisposable
     private float nativeFov;
     private float appliedFov;
     private float referenceFov;
-    private float shoulderWeight;
     private bool presentationFailed;
     private bool reportedAimFailure;
+    private bool reportedPitchFailure;
 #if DEBUG
     private bool reportedLeftBlend;
     private bool reportedBackwardBlend;
+    private bool reportedPitchLimits;
     private int traceBoomFrame = -1;
     private float? traceBoomStartYaw;
     private float? traceBoomDelta;
@@ -45,7 +45,7 @@ internal sealed class GameCamera : IDisposable
         ? ("first_person", 0f, 100)
         : !UsesChaseCamera
             ? ("native_third_person", 0f, 100)
-            : (shoulder.Enabled.Value ? "close_shoulder" : "centered_chase", shoulderWeight, shoulder.Distance.Value);
+            : ("close_shoulder", 1f, shoulder.Distance.Value);
 #endif
 
     internal delegate (Quaternion Rotation, float Fov) Presentation(Quaternion rotation, float nativeFov,
@@ -53,15 +53,15 @@ internal sealed class GameCamera : IDisposable
 
     internal Presentation Framing { get; set; } = CameraFraming.Evaluate;
     internal Func<Ray, Transform, Transform, Ray> RebaseAimRay { get; set; } = CameraFraming.RebaseAimRay;
-    internal Func<Vector3, Vector3> CenterOffset { get; set; } = CameraFraming.CenterOffset;
-    internal Func<Vector3, float, float, int, (Vector3 Socket, float ArmScale)> ShoulderFrame { get; set; } =
+    internal Func<float, float, float, (float Up, float Down)> ExtendPitchLimits { get; set; } =
+        CameraFraming.ExtendPitchLimits;
+    internal Func<Vector3, float, int, (Vector3 Socket, float ArmScale)> ShoulderFrame { get; set; } =
         CameraFraming.PlaceShoulder;
 
-    internal GameCamera(ManualLogSource log, ConfigEntry<int> fieldOfView, ConfigEntry<float> cameraHeight,
+    internal GameCamera(ManualLogSource log, ConfigEntry<float> cameraHeight,
         ConfigEntry<bool> levelHorizon, ConfigEntry<int> rollReduction, CloseShoulderSettings shoulder)
     {
         this.log = log;
-        this.fieldOfView = fieldOfView;
         this.cameraHeight = cameraHeight;
         this.levelHorizon = levelHorizon;
         this.rollReduction = rollReduction;
@@ -74,10 +74,12 @@ internal sealed class GameCamera : IDisposable
         var boom = AccessTools.Method(typeof(CameraBoom), nameof(CameraBoom.LateUpdate));
         var brain = AccessTools.Method(typeof(CinemachineBrain), nameof(CinemachineBrain.LateUpdate));
         var rotation = AccessTools.Method(typeof(ETCTransformCtrl), nameof(ETCTransformCtrl.CheckRotateUpdate));
+        var angleLimits = AccessTools.Method(typeof(ETCTransformCtrl), nameof(ETCTransformCtrl.DoAngleLimitation));
         var locomotion = AccessTools.Method(typeof(HeroMoveStateBase), nameof(HeroMoveStateBase.SetTpsAni));
-        harmony.Patch(boom, prefix: Hook(nameof(CenterBoom)), postfix: Hook(nameof(AfterBoom)));
+        harmony.Patch(boom, prefix: Hook(nameof(FrameBoom)), postfix: Hook(nameof(AfterBoom)));
         harmony.Patch(brain, postfix: Hook(nameof(AfterBrain)));
         harmony.Patch(rotation, prefix: Hook(nameof(FaceAim)), postfix: Hook(nameof(RestoreRotationSettings)));
+        harmony.Patch(angleLimits, prefix: Hook(nameof(WidenPitchLimits)), finalizer: Hook(nameof(RestorePitchLimits)));
         harmony.Patch(locomotion, postfix: Hook(nameof(KeepStrafeBlendSigned)));
         ShoulderAim.Install(harmony);
         active = this;
@@ -92,7 +94,12 @@ internal sealed class GameCamera : IDisposable
 
     internal static GameCamera? Active => active;
 
-    internal Camera? ShoulderAimCamera => shoulderWeight > 0f && !presentationFailed && UsesChaseCamera
+#if DEBUG
+    internal void InstallPeerPingTrace(ConfigEntry<int> duration, ConfigEntry<KeyCode> toggleKey) =>
+        PeerPingTrace.Install(harmony, log, duration, toggleKey);
+#endif
+
+    internal Camera? ShoulderAimCamera => !presentationFailed && UsesChaseCamera
         && owner is { } hero && CharacterMotionManager.HeroObj?.Pointer == hero.Pointer
         && presentedCamera && NormalCamera(hero) is not null ? presentedCamera : null;
 
@@ -106,10 +113,6 @@ internal sealed class GameCamera : IDisposable
         }
 
         var normal = NormalCamera(hero);
-        float targetWeight = shoulder.Enabled.Value ? 1f : 0f;
-        shoulderWeight = owner is not null
-            ? Mathf.MoveTowards(shoulderWeight, targetWeight, Time.unscaledDeltaTime / seconds)
-            : targetWeight;
         avatar.Update(enabled && UsesChaseCamera && normal is not null ? hero : null);
         if (normal is null || !gameplayInput)
             return;
@@ -130,7 +133,7 @@ internal sealed class GameCamera : IDisposable
         }
 
         HeroCameraManager.ChangeToTpsMode(TpsMode.FREE, seconds);
-        log.LogInfo("Centered Chase entered.");
+        log.LogInfo("Close Shoulder entered.");
     }
 
     private static NormalCS? NormalCamera(NewPlayerObject? hero)
@@ -150,7 +153,7 @@ internal sealed class GameCamera : IDisposable
         owner = null;
         if (!hero.IsMoreTpsState() && (CameraManager.CurCameraMode == CameraMode.TPS || normal.tarCamMode == CameraMode.TPS))
             normal.ChangeToFpsMode(seconds);
-        log.LogInfo("Centered Chase released.");
+        log.LogInfo("Close Shoulder released.");
     }
 
     private bool OwnsBoom(CameraBoom boom)
@@ -184,6 +187,56 @@ internal sealed class GameCamera : IDisposable
         }
     }
 
+    private static void WidenPitchLimits(ETCTransformCtrl __instance, out PitchBounds __state)
+    {
+        __state = default;
+        if (active is not { UsesChaseCamera: true, presentationFailed: false, owner: { } hero } camera)
+            return;
+        try
+        {
+            if (__instance.Pointer != ETCTransformCtrl.ControllerETCCtrl?.Pointer
+                || CharacterMotionManager.HeroObj?.Pointer != hero.Pointer
+                || NormalCamera(hero) is not { isChanging: false }
+                || !__instance.GetAngleLimitX(out float up, out float down))
+                return;
+
+            float upWithRecoil = __instance.FixLimit();
+            var (wideUp, wideDown) = camera.ExtendPitchLimits(up, down, upWithRecoil);
+            if (!float.IsFinite(wideUp) || !float.IsFinite(wideDown) || (wideUp == up && wideDown == down))
+                return;
+            __state = new PitchBounds(true, up, down);
+            __instance.m_minAngleX = wideUp;
+            __instance.m_maxAngleX = wideDown;
+#if DEBUG
+            if (!camera.reportedPitchLimits)
+            {
+                camera.reportedPitchLimits = true;
+                camera.log.LogInfo($"Widened third-person pitch from {up:0.#}° up / {down:0.#}° down to "
+                    + $"{wideUp + (upWithRecoil - up):0.#}° up / {wideDown:0.#}° down.");
+            }
+#endif
+        }
+        catch (Exception error)
+        {
+            if (!camera.reportedPitchFailure)
+            {
+                camera.reportedPitchFailure = true;
+                camera.log.LogWarning($"Could not widen third-person pitch: {error.GetBaseException().Message}");
+            }
+        }
+    }
+
+    private static void RestorePitchLimits(ETCTransformCtrl __instance, PitchBounds __state)
+    {
+        if (__state.Changed)
+        {
+            __instance.m_minAngleX = __state.Up;
+            __instance.m_maxAngleX = __state.Down;
+        }
+    }
+
+    private readonly record struct PitchBounds(bool Changed, float Up, float Down);
+
     private static void KeepStrafeBlendSigned(float speedRate)
     {
         if (speedRate <= 0f || active is not { UsesChaseCamera: true, owner: { } hero } camera
@@ -216,7 +269,7 @@ internal sealed class GameCamera : IDisposable
             if (!camera.reportedLeftBlend)
             {
                 camera.reportedLeftBlend = true;
-                camera.log.LogInfo("Centered Chase applied the signed left animation blend.");
+                camera.log.LogInfo("Close Shoulder applied the signed left animation blend.");
             }
 #endif
         }
@@ -227,13 +280,13 @@ internal sealed class GameCamera : IDisposable
             if (!camera.reportedBackwardBlend)
             {
                 camera.reportedBackwardBlend = true;
-                camera.log.LogInfo("Centered Chase applied the signed backward animation blend.");
+                camera.log.LogInfo("Close Shoulder applied the signed backward animation blend.");
             }
 #endif
         }
     }
 
-    private static void CenterBoom(CameraBoom __instance, out BoomSettings __state)
+    private static void FrameBoom(CameraBoom __instance, out BoomSettings __state)
     {
         __state = default;
         if (active is not { } camera)
@@ -257,8 +310,8 @@ internal sealed class GameCamera : IDisposable
             var pivot = __instance.DefaultOffset;
             float armLength = config.TargetArmLength;
             __state = new BoomSettings(config, offset, pivot, armLength, config.FocusSpeed);
-            var (framing, armScale) = camera.ShoulderFrame(camera.CenterOffset(offset),
-                camera.shoulderWeight, camera.shoulder.Offset.Value, camera.shoulder.Distance.Value);
+            var (framing, armScale) = camera.ShoulderFrame(offset, camera.shoulder.Offset.Value,
+                camera.shoulder.Distance.Value);
             float height = framing.y - offset.y + camera.cameraHeight.Value - CameraFraming.DefaultHeight;
             // Virtual cameras follow the boom pivot. The regular boom uses its socket directly.
             if (__instance.BrainEnabled)
@@ -341,7 +394,7 @@ internal sealed class GameCamera : IDisposable
         var view = output!;
         var rotation = view.transform.rotation;
         float fov = view.fieldOfView;
-        float targetFov = Mathf.Lerp(fieldOfView.Value, shoulder.FieldOfView.Value, shoulderWeight);
+        int targetFov = shoulder.FieldOfView.Value;
         if (presentedCamera != view)
         {
             RestorePresentation();
@@ -386,7 +439,7 @@ internal sealed class GameCamera : IDisposable
     {
         presentationFailed = true;
         RestorePresentation();
-        log.LogWarning($"Centered Chase framing stopped: {error.GetBaseException().Message}");
+        log.LogWarning($"Close Shoulder framing stopped: {error.GetBaseException().Message}");
     }
 
     internal void ReportAimFailure(Exception error)
@@ -413,13 +466,18 @@ internal sealed class GameCamera : IDisposable
         }
         catch (Exception error)
         {
-            log.LogWarning($"Could not release Centered Chase: {error.GetBaseException().Message}");
+            log.LogWarning($"Could not release Close Shoulder: {error.GetBaseException().Message}");
         }
         finally
         {
             owner = null;
             if (active == this)
+            {
+#if DEBUG
+                PeerPingTrace.Shutdown();
+#endif
                 active = null;
+            }
             harmony.UnpatchSelf();
         }
     }

@@ -1,7 +1,7 @@
 # Gunfire Reborn
 
 - [Mods Core](mods/core/README.md) provides the shared Mods settings tab and a loader and settings probe.
-- [Steady Third Person](mods/steady-third-person/README.md) adds a toggleable third-person camera for a working BepInEx 6 IL2CPP install.
+- [Steady Third Person](mods/steady-third-person/README.md) adds a toggleable over-the-shoulder camera for a working BepInEx 6 IL2CPP install.
 
 Each mod under `mods/` has its own Nx library and build target.
 

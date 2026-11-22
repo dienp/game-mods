@@ -71,9 +71,9 @@ internal sealed class ChaseAvatar : IDisposable
             deputyAnimations = GetWeaponAnimations(deputyWeapon);
 #if DEBUG
             if (avatarAnimation is not null)
-                log.LogInfo($"Centered Chase avatar animation: {avatarAnimation.DescribeControls()}.");
+                log.LogInfo($"Close Shoulder avatar animation: {avatarAnimation.DescribeControls()}.");
             if (mainAnimations.Length > 0)
-                log.LogInfo($"Centered Chase weapon animation: {string.Join("; ", mainAnimations.Select(binding => binding.DescribeControls()))}.");
+                log.LogInfo($"Close Shoulder weapon animation: {string.Join("; ", mainAnimations.Select(binding => binding.DescribeControls()))}.");
 #endif
             lastShot = GetLastShot(player);
             UpdateAnimations(hero!, player);
@@ -83,7 +83,7 @@ internal sealed class ChaseAvatar : IDisposable
             if (!reportedError)
             {
                 reportedError = true;
-                log.LogWarning($"Centered Chase could not display the equipped weapon: {error.GetBaseException().Message}");
+                log.LogWarning($"Close Shoulder could not display the equipped weapon: {error.GetBaseException().Message}");
             }
         }
     }
@@ -97,7 +97,7 @@ internal sealed class ChaseAvatar : IDisposable
         var attachment = GOUtility.GetTransformByName(model, bone, true);
         if (!attachment)
         {
-            log.LogWarning($"Centered Chase did not find {bone} for the equipped weapon.");
+            log.LogWarning($"Close Shoulder did not find {bone} for the equipped weapon.");
             return null;
         }
 
@@ -117,11 +117,11 @@ internal sealed class ChaseAvatar : IDisposable
             ?? Mount(LoadModel(WeaponDefine.GetWeaponShowModel(shape)), attachment, shape, hero.SID, hand);
         if (!copy)
         {
-            log.LogWarning($"Centered Chase could not find visible weapon meshes for shape {shape}.");
+            log.LogWarning($"Close Shoulder could not find visible weapon meshes for shape {shape}.");
             return null;
         }
 
-        log.LogInfo($"Centered Chase mounted {copy!.name} on {bone}.");
+        log.LogInfo($"Close Shoulder mounted {copy!.name} on {bone}.");
         return copy;
 
         static GameObject? LoadModel(string path) =>
@@ -134,7 +134,7 @@ internal sealed class ChaseAvatar : IDisposable
             return null;
 
         // Clone while inactive so gameplay components never start on the visual copy.
-        var staging = new GameObject("Centered Chase weapon");
+        var staging = new GameObject("Close Shoulder weapon");
         staging.SetActive(false);
         GameObject? copy = null;
         try

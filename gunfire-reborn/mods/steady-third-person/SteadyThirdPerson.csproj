@@ -3,7 +3,7 @@
     <TargetFramework>net6.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <RestoreAdditionalProjectSources>https://nuget.bepinex.dev/v3/index.json;https://nuget.samboy.dev/v3/index.json</RestoreAdditionalProjectSources>
     <GameDir Condition="'$(GameDir)' == ''">$(GUNFIRE_GAME_DIR)</GameDir>
     <GameDir Condition="'$(GameDir)' == ''">E:/SteamLibrary/steamapps/common/Gunfire Reborn</GameDir>

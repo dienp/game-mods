@@ -11,10 +11,10 @@ internal sealed class DevelopmentFraming
 {
     private readonly ManualLogSource log;
     private readonly ConfigEntry<string> assemblyPath;
-    private Func<Vector3, Vector3> centerOffset = CameraFraming.CenterOffset;
-    private Func<Vector3, float, float, int, (Vector3 Socket, float ArmScale)> shoulderFrame = CameraFraming.PlaceShoulder;
+    private Func<Vector3, float, int, (Vector3 Socket, float ArmScale)> shoulderFrame = CameraFraming.PlaceShoulder;
     private GameCamera.Presentation framing = CameraFraming.Evaluate;
     private Func<Ray, Transform, Transform, Ray> aimRay = CameraFraming.RebaseAimRay;
+    private Func<float, float, float, (float Up, float Down)> pitchLimits = CameraFraming.ExtendPitchLimits;
     private AssemblyLoadContext? context;
     private (string Path, DateTime Modified, long Length)? loaded;
     private float nextCheck;
@@ -25,16 +25,10 @@ internal sealed class DevelopmentFraming
         this.assemblyPath = assemblyPath;
     }
 
-    internal Vector3 CenterOffset(Vector3 offset)
+    internal (Vector3 Socket, float ArmScale) PlaceShoulder(Vector3 nativeOffset, float shoulderOffset, int distancePercent)
     {
         CheckForReload();
-        return centerOffset(offset);
-    }
-
-    internal (Vector3 Socket, float ArmScale) PlaceShoulder(Vector3 socket, float weight, float offset, int distancePercent)
-    {
-        CheckForReload();
-        return shoulderFrame(socket, weight, offset, distancePercent);
+        return shoulderFrame(nativeOffset, shoulderOffset, distancePercent);
     }
 
     internal (Quaternion Rotation, float Fov) Evaluate(Quaternion rotation, float nativeFov,
@@ -48,6 +42,12 @@ internal sealed class DevelopmentFraming
     {
         CheckForReload();
         return aimRay(ray, source, shoulder);
+    }
+
+    internal (float Up, float Down) ExtendPitchLimits(float up, float down, float upWithRecoil)
+    {
+        CheckForReload();
+        return pitchLimits(up, down, upWithRecoil);
     }
 
     private void CheckForReload()
@@ -74,28 +74,28 @@ internal sealed class DevelopmentFraming
             if (revision == loaded)
                 return;
 
-            candidate = new AssemblyLoadContext("Centered Chase framing", isCollectible: true);
+            candidate = new AssemblyLoadContext("Close Shoulder framing", isCollectible: true);
             using var stream = file.Open(FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
             var assembly = candidate.LoadFromStream(stream);
             var type = assembly.GetType(typeof(CameraFraming).FullName!, throwOnError: true)!;
-            var nextOffset = LoadMethod<Func<Vector3, Vector3>>(type, nameof(CameraFraming.CenterOffset));
-            var nextShoulder = LoadMethod<Func<Vector3, float, float, int, (Vector3, float)>>(type, nameof(CameraFraming.PlaceShoulder));
+            var nextShoulder = LoadMethod<Func<Vector3, float, int, (Vector3, float)>>(type, nameof(CameraFraming.PlaceShoulder));
             var nextFraming = LoadMethod<GameCamera.Presentation>(type, nameof(CameraFraming.Evaluate));
             var nextAimRay = LoadMethod<Func<Ray, Transform, Transform, Ray>>(type, nameof(CameraFraming.RebaseAimRay));
+            var nextPitchLimits = LoadMethod<Func<float, float, float, (float, float)>>(type, nameof(CameraFraming.ExtendPitchLimits));
 
             var previous = context;
-            centerOffset = nextOffset;
             shoulderFrame = nextShoulder;
             framing = nextFraming;
             aimRay = nextAimRay;
+            pitchLimits = nextPitchLimits;
             context = candidate;
             loaded = revision;
             previous?.Unload();
-            log.LogInfo("Centered Chase framing reloaded.");
+            log.LogInfo("Close Shoulder framing reloaded.");
         }
         catch (Exception error)
         {
-            log.LogWarning($"Could not reload Centered Chase framing: {error.GetBaseException().Message}");
+            log.LogWarning($"Could not reload Close Shoulder framing: {error.GetBaseException().Message}");
         }
         finally
         {

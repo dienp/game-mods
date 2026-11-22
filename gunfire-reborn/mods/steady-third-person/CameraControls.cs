@@ -44,6 +44,7 @@ public sealed class CameraControls : MonoBehaviour
         {
             bool gameplayInput = !Cursor.visible && Time.timeScale > 0f;
 #if DEBUG
+            PeerPingTrace.Tick();
             if ((gameplayInput || trace is not null) && Application.isFocused && Input.GetKeyDown(KeyCode.F9))
                 ToggleTrace(active);
 #endif
@@ -57,7 +58,7 @@ public sealed class CameraControls : MonoBehaviour
             StopTrace();
 #endif
             camera = null;
-            log.LogWarning($"Centered Chase stopped: {error.GetBaseException().Message}");
+            log.LogWarning($"Close Shoulder stopped: {error.GetBaseException().Message}");
             active.Dispose();
         }
     }
