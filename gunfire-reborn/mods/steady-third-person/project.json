@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "gunfire-reborn-steady-third-person",
+  "projectType": "library",
+  "sourceRoot": "gunfire-reborn/mods/steady-third-person",
+  "tags": ["game:gunfire-reborn", "type:mod"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "outputs": ["{projectRoot}/bin/Release/net6.0"],
+      "options": {
+        "cwd": "gunfire-reborn/mods/steady-third-person",
+        "command": "dotnet build SteadyThirdPerson.csproj -c Release --nologo"
+      }
+    }
+  }
+}

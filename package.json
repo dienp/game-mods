@@ -1,0 +1,16 @@
+{
+  "name": "game-mods",
+  "private": true,
+  "scripts": {
+    "build": "nx run-many --target=build",
+    "projects": "nx show projects"
+  },
+  "devDependencies": {
+    "nx": "24.0.6"
+  },
+  "overrides": {
+    "nx": {
+      "minimatch": "11.0.9"
+    }
+  }
+}

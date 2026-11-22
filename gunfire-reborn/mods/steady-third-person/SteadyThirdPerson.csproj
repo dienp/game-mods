@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>0.1.0</Version>
+    <RestoreAdditionalProjectSources>https://nuget.bepinex.dev/v3/index.json;https://nuget.samboy.dev/v3/index.json</RestoreAdditionalProjectSources>
+    <UnityReferenceDirectory>$(MSBuildProjectDirectory)/obj/unity-references</UnityReferenceDirectory>
+    <UnityReferenceSource>https://raw.githubusercontent.com/BepInEx/BepInEx/dbc82f05b8ea34833de5b6a723eb60dd8398e0b1/Runtimes/Unity/BepInEx.Unity.IL2CPP/lib</UnityReferenceSource>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.791" IncludeAssets="compile" PrivateAssets="all" />
+    <PackageReference Include="Il2CppInterop.ReferenceLibs" Version="1.0.0" IncludeAssets="compile" PrivateAssets="all" />
+    <UnityReference Include="UnityEngine.CoreModule;UnityEngine.InputLegacyModule" />
+    <Reference Include="@(UnityReference)">
+      <HintPath>$(UnityReferenceDirectory)/%(Identity).dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="FetchUnityReferences" BeforeTargets="ResolveAssemblyReferences">
+    <MakeDir Directories="$(UnityReferenceDirectory)" />
+    <DownloadFile SourceUrl="$(UnityReferenceSource)/%(UnityReference.Identity).dll"
+                  DestinationFolder="$(UnityReferenceDirectory)"
+                  Condition="!Exists('$(UnityReferenceDirectory)/%(UnityReference.Identity).dll')" />
+  </Target>
+</Project>
