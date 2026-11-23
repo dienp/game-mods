@@ -1,24 +1,71 @@
 using System;
+#if ANOMALITH_IL2CPP
+using JsonException = System.Text.Json.JsonException;
+#else
+using JsonException = Newtonsoft.Json.JsonException;
+#endif
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+#if ANOMALITH_IL2CPP
+using Anomalith;
+#endif
 using BepInEx;
 using BepInEx.Configuration;
-using Newtonsoft.Json;
 using UnityEngine;
 
 namespace AnomalithUpgradeTracker
 {
-    [BepInPlugin("labs.anomalith.upgradetracker", "ANOMALITH Upgrade Tracker", "1.8.1")]
+#if ANOMALITH_IL2CPP
+    [BepInPlugin("labs.anomalith.upgradetracker", "ANOMALITH Upgrade Tracker", "1.8.2")]
+#if DEBUG
+    public sealed class PluginLoader : Il2CppDebugHost<DevelopmentDriver, UpgradeTrackerPlugin>
+    {
+    }
+
+    public sealed class DevelopmentDriver : UnityEngine.MonoBehaviour
+    {
+        public DevelopmentDriver(System.IntPtr pointer) : base(pointer)
+        {
+        }
+
+        private void Update() => Il2CppDebugSession.Current?.Update();
+        private void LateUpdate() => Il2CppDebugSession.Current?.LateUpdate();
+        private void OnGUI() => Il2CppDebugSession.Current?.Draw();
+        private void OnDestroy() => Il2CppDebugSession.Current?.Dispose();
+    }
+
+    public sealed class UpgradeTrackerPlugin : Il2CppDebugFeature
+    {
+#else
+    public sealed class PluginLoader : Il2CppPluginHost<UpgradeTrackerPlugin>
+    {
+    }
+
+    public sealed class UpgradeTrackerPlugin : UnityEngine.MonoBehaviour
+    {
+        public UpgradeTrackerPlugin(System.IntPtr pointer) : base(pointer)
+        {
+        }
+
+        private ConfigFile Config => Il2CppPluginContext.Config;
+        private BepInEx.Logging.ManualLogSource Logger => Il2CppPluginContext.Log;
+#endif
+#else
+    [BepInPlugin("labs.anomalith.upgradetracker", "ANOMALITH Upgrade Tracker", "1.8.2")]
     public sealed class UpgradeTrackerPlugin : BaseUnityPlugin
     {
+#endif
         private ConfigEntry<KeyboardShortcut> pinKey;
         private ConfigEntry<KeyboardShortcut> clearKey;
         private ConfigEntry<KeyboardShortcut> toggleKey;
         private ConfigEntry<KeyboardShortcut> sourcesKey;
         private ConfigEntry<bool> showPinnedItem;
         private ConfigEntry<string> savedPin;
-        private FieldInfo currentSelector;
+        private NativeField currentSelector;
+#if ANOMALITH_IL2CPP
+        private NativeToggleOption option;
+#endif
         private PinnedRecipe pin;
 
         private string[] materialNames;
@@ -52,7 +99,7 @@ namespace AnomalithUpgradeTracker
 
         private void Awake()
         {
-            currentSelector = typeof(DevMenuBase).GetField("m_CurrentSelector",
+            currentSelector = NativeField.Find(typeof(DevMenuBase), "m_CurrentSelector",
                 BindingFlags.Instance | BindingFlags.NonPublic);
             if (currentSelector?.FieldType != typeof(DevelopItemSelector))
             {
@@ -73,12 +120,15 @@ namespace AnomalithUpgradeTracker
                 "The recipe captured in the Workshop.");
             showPinnedItem = Config.Bind("Tracker", "ShowPinnedItem", true,
                 "Show the pinned recipe checklist, pickup highlights, and Deploy material hints.");
+#if ANOMALITH_IL2CPP
+            option = new NativeToggleOption(showPinnedItem, Logger, "Pinned Item", "LABS_PINNED_ITEM_VISIBILITY");
+#endif
 
             if (!string.IsNullOrWhiteSpace(savedPin.Value))
             {
                 try
                 {
-                    var restored = JsonConvert.DeserializeObject<PinnedRecipe>(savedPin.Value);
+                    var restored = PinnedRecipe.Deserialize(savedPin.Value);
                     if (restored?.IsValid == true)
                     {
                         SetPin(restored);
@@ -158,6 +208,9 @@ namespace AnomalithUpgradeTracker
 
         private void LateUpdate()
         {
+#if ANOMALITH_IL2CPP
+            option?.Refresh();
+#endif
             var hud = UIManager.Instance;
             showChecklist = showGuidance && hud != null && !OvGainNotice.IsActive(hud.money);
             checklistView?.SetVisible(showChecklist);
@@ -171,7 +224,7 @@ namespace AnomalithUpgradeTracker
         private void RefreshDeploy()
         {
             var dialog = showPinnedItem.Value && pin != null && DialogManager.Instance != null && DialogManager.IsOpenDialog
-                ? DialogManager.GetTopDialog() as PortalWarpDialog : null;
+                ? NativeUnity.Cast<PortalWarpDialog>(DialogManager.GetTopDialog()) : null;
             if (dialog == null || !dialog.isActiveAndEnabled || dialog.IsDisable || Inventory.Instance == null)
             {
                 if (showDeploy)
@@ -202,6 +255,9 @@ namespace AnomalithUpgradeTracker
 
         private void OnDestroy()
         {
+#if ANOMALITH_IL2CPP
+            option?.Dispose();
+#endif
             checklistView?.Destroy();
             deployView?.Destroy();
             workshopView?.Destroy();
@@ -215,21 +271,21 @@ namespace AnomalithUpgradeTracker
                 !DialogManager.IsOpenDialog)
                 return null;
 
-            var menu = DialogManager.GetTopDialog() as DevMenuBase;
+            var menu = NativeUnity.Cast<DevMenuBase>(DialogManager.GetTopDialog());
             return menu == null || !menu.isActiveAndEnabled || menu.IsDisable || menu.IsDisableOperation
                 ? null : menu;
         }
 
         private static PinnedRecipe.Kind RecipeKind(DevMenuBase menu)
         {
-            return menu switch
-            {
-                WeaponDevMenu _ => PinnedRecipe.Kind.Weapon,
-                WeaponReinforceMenu _ => PinnedRecipe.Kind.Reinforcement,
-                ArmorDevMenu _ => PinnedRecipe.Kind.Armor,
-                AttachmentDevMenu _ => PinnedRecipe.Kind.Attachment,
-                _ => PinnedRecipe.Kind.Unknown
-            };
+            if (NativeUnity.Cast<WeaponDevMenu>(menu) != null)
+                return PinnedRecipe.Kind.Weapon;
+            if (NativeUnity.Cast<WeaponReinforceMenu>(menu) != null)
+                return PinnedRecipe.Kind.Reinforcement;
+            if (NativeUnity.Cast<ArmorDevMenu>(menu) != null)
+                return PinnedRecipe.Kind.Armor;
+            return NativeUnity.Cast<AttachmentDevMenu>(menu) != null
+                ? PinnedRecipe.Kind.Attachment : PinnedRecipe.Kind.Unknown;
         }
 
         private void RefreshWorkshop()
@@ -249,7 +305,8 @@ namespace AnomalithUpgradeTracker
 
             var selected = currentSelector.GetValue(menu) as DevelopItemSelector;
             var recipe = selected == null ? null : selected.GetDevData();
-            if (menu is AttachmentDevMenu attachmentMenu && recipe is AttachmentDevData attachment &&
+            if (NativeUnity.Cast<AttachmentDevMenu>(menu) is AttachmentDevMenu attachmentMenu &&
+                NativeUnity.Cast<AttachmentDevData>(recipe) is AttachmentDevData attachment &&
                 !attachment.IsSecletInfo())
             {
                 if (compatibilityView?.IsFor(attachmentMenu) != true)
@@ -315,7 +372,7 @@ namespace AnomalithUpgradeTracker
 
         private void SavePin(PinnedRecipe recipe)
         {
-            savedPin.Value = JsonConvert.SerializeObject(recipe);
+            savedPin.Value = recipe.Serialize();
             SetPin(recipe);
         }
 

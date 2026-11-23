@@ -10,9 +10,46 @@ using HarmonyLib;
 
 namespace AnomalithQuickSwitch
 {
-    [BepInPlugin(PluginId, "ANOMALITH Quick Weapon Switch", "1.0.1")]
+#if ANOMALITH_IL2CPP
+    [BepInPlugin("labs.anomalith.quickswitch", "ANOMALITH Quick Weapon Switch", "1.0.2")]
+#if DEBUG
+    public sealed class PluginLoader : Il2CppDebugHost<DevelopmentDriver, QuickSwitchPlugin>
+    {
+    }
+
+    public sealed class DevelopmentDriver : UnityEngine.MonoBehaviour
+    {
+        public DevelopmentDriver(System.IntPtr pointer) : base(pointer)
+        {
+        }
+
+        private void Update() => Il2CppDebugSession.Current?.Update();
+        private void LateUpdate() => Il2CppDebugSession.Current?.LateUpdate();
+        private void OnGUI() => Il2CppDebugSession.Current?.Draw();
+        private void OnDestroy() => Il2CppDebugSession.Current?.Dispose();
+    }
+
+    public sealed class QuickSwitchPlugin : Il2CppDebugFeature
+    {
+#else
+    public sealed class PluginLoader : Il2CppPluginHost<QuickSwitchPlugin>
+    {
+    }
+
+    public sealed class QuickSwitchPlugin : UnityEngine.MonoBehaviour
+    {
+        public QuickSwitchPlugin(System.IntPtr pointer) : base(pointer)
+        {
+        }
+
+        private ConfigFile Config => Il2CppPluginContext.Config;
+        private BepInEx.Logging.ManualLogSource Logger => Il2CppPluginContext.Log;
+#endif
+#else
+    [BepInPlugin(PluginId, "ANOMALITH Quick Weapon Switch", "1.0.2")]
     public sealed class QuickSwitchPlugin : BaseUnityPlugin
     {
+#endif
         private const string PluginId = "labs.anomalith.quickswitch";
         private static readonly WeaponShortcutUI.Arrow[] ScrollOrder =
         {
@@ -26,10 +63,16 @@ namespace AnomalithQuickSwitch
         private Harmony harmony;
         private SwitchOption option;
 
+#if ANOMALITH_IL2CPP
+        private void Awake()
+#else
         private IEnumerator Start()
+#endif
         {
+#if !ANOMALITH_IL2CPP
             // ScriptEngine destroys the old component at the end of the frame.
             yield return null;
+#endif
             quickSwitch = Config.Bind("Gameplay", "Enabled", true, "Speed up normal firearm swaps.");
             switchSpeed = Config.Bind("Gameplay", "SpeedTenths", DefaultSpeed, new ConfigDescription(
                 "Weapon switch speed in tenths of the normal speed. 15 means 1.5×.",
@@ -38,8 +81,19 @@ namespace AnomalithQuickSwitch
             try
             {
                 var swap = AccessTools.DeclaredMethod(typeof(PlayerCtrl), nameof(PlayerCtrl.ChangeWeapon), Type.EmptyTypes);
+#if ANOMALITH_IL2CPP
+                var shortcut = AccessTools.DeclaredMethod(typeof(Inventory), nameof(Inventory.GetCurrentWeapon),
+                    new[] { typeof(WeaponShortcutUI.Arrow), typeof(bool) });
+                var speed = AccessTools.DeclaredMethod(typeof(WeaponBase), nameof(WeaponBase.GetChangeSpd));
+                if (swap == null || shortcut == null || speed == null)
+                    throw new InvalidOperationException("The native weapon switch is unavailable.");
+                harmony.Patch(swap, prefix: PatchMethod(nameof(BeginSwap)), finalizer: PatchMethod(nameof(EndSwap)));
+                harmony.Patch(shortcut, postfix: PatchMethod(nameof(SelectScrollWeapon)));
+                harmony.Patch(speed, postfix: PatchMethod(nameof(ApplySwapSpeed)));
+#else
                 harmony.Patch(swap, transpiler: new HarmonyMethod(
                     AccessTools.DeclaredMethod(typeof(QuickSwitchPlugin), nameof(PatchSwap))));
+#endif
                 option = new SwitchOption(quickSwitch, switchSpeed, Logger);
                 Logger.LogInfo($"Quick Weapon Switch loaded. Enabled: {quickSwitch.Value}.");
             }
@@ -61,6 +115,61 @@ namespace AnomalithQuickSwitch
             option?.Dispose();
         }
 
+#if ANOMALITH_IL2CPP
+        [ThreadStatic]
+        private static SwapContext activeSwap;
+
+        private static HarmonyMethod PatchMethod(string name) =>
+            new HarmonyMethod(AccessTools.DeclaredMethod(typeof(QuickSwitchPlugin), name));
+
+        private static void BeginSwap(PlayerCtrl __instance, out SwapContext __state)
+        {
+            __state = activeSwap;
+            activeSwap = default;
+            var battle = BattleManager.Instance;
+            if (quickSwitch?.Value != true || battle == null || battle.GetCurrentPlayer() != __instance ||
+                !__instance.HasInput())
+                return;
+
+            bool direct = __instance.GetUp() || __instance.GetLeft() || __instance.GetRight() ||
+                __instance.GetOtherShortcut_Left() || __instance.GetOtherShortcut_Up() ||
+                __instance.GetOtherShortcut_Right();
+            float scroll = __instance.GetMouseScroll().y;
+            bool cycle = !direct && scroll != 0f && WeaponShortcutUI.GetDialog() == null &&
+                (DialogManager.Instance == null || !DialogManager.IsOpenDialog);
+            activeSwap = new SwapContext(__instance, cycle ? scroll : 0f);
+        }
+
+        private static void SelectScrollWeapon(Inventory __instance, ref WeaponBase __result)
+        {
+            if (activeSwap.Scroll != 0f)
+                __result = GetScrollWeapon(__instance, activeSwap.Player, activeSwap.Scroll);
+        }
+
+        private static void ApplySwapSpeed(WeaponBase __instance, ref float __result)
+        {
+            if (activeSwap.Player != null)
+                __result = ScaleSwapSpeed(__instance, activeSwap.Player, __result);
+        }
+
+        private static Exception EndSwap(Exception __exception, SwapContext __state)
+        {
+            activeSwap = __state;
+            return __exception;
+        }
+
+        private readonly struct SwapContext
+        {
+            internal readonly PlayerCtrl Player;
+            internal readonly float Scroll;
+
+            internal SwapContext(PlayerCtrl player, float scroll)
+            {
+                Player = player;
+                Scroll = scroll;
+            }
+        }
+#else
         private static IEnumerable<CodeInstruction> PatchSwap(IEnumerable<CodeInstruction> instructions)
         {
             var code = instructions.ToList();
@@ -121,6 +230,7 @@ namespace AnomalithQuickSwitch
 
             return inventory.GetCurrentWeapon(arrow, outside);
         }
+#endif
 
         private static WeaponBase GetScrollWeapon(Inventory inventory, PlayerCtrl player, float scroll)
         {
@@ -157,9 +267,13 @@ namespace AnomalithQuickSwitch
             return null;
         }
 
-        private static float GetSwapSpeed(WeaponBase weapon, PlayerCtrl player)
+#if !ANOMALITH_IL2CPP
+        private static float GetSwapSpeed(WeaponBase weapon, PlayerCtrl player) =>
+            ScaleSwapSpeed(weapon, player, weapon.GetChangeSpd());
+#endif
+
+        private static float ScaleSwapSpeed(WeaponBase weapon, PlayerCtrl player, float speed)
         {
-            float speed = weapon.GetChangeSpd();
             var battle = BattleManager.Instance;
             if (quickSwitch.Value && battle != null && battle.GetCurrentPlayer() == player &&
                 weapon.GetWeaponType() != WeaponBase.WEAPON_TYPE.THROWABLE &&

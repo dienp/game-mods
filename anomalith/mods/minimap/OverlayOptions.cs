@@ -1,7 +1,10 @@
+using System.Linq;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+#if !ANOMALITH_IL2CPP
 using BepInEx.Bootstrap;
+#endif
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using TMPro;
@@ -13,17 +16,19 @@ namespace AnomalithMinimap
     internal sealed class OverlayOptions : IDisposable
     {
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
+#if !ANOMALITH_IL2CPP
         private const string TrackerId = "labs.anomalith.upgradetracker";
+#endif
         private const string SizeLabel = "Minimap Size";
 
-        private static readonly FieldInfo Prefab = typeof(OptionItemHolder).GetField("m_SelectPrefab", Private);
-        private static readonly FieldInfo SliderPrefab = typeof(OptionItemHolder).GetField("m_SliderPrefab", Private);
-        private static readonly FieldInfo SliderValueText = typeof(OptionItemSlider).GetField("m_ValueText", Private);
-        private static readonly FieldInfo Content = typeof(OptionItemHolder).GetField("m_OptionContentRoot", Private);
-        private static readonly FieldInfo Current = typeof(OptionItemHolder).GetField("m_CurrentOptionItem", Private);
-        private static readonly FieldInfo IsOpen = typeof(OptionItemHolder).GetField("m_IsOpen", Private);
-        private static readonly FieldInfo Parameter = typeof(OptionItemBase).GetField("m_OptionParam", Private);
-        private static readonly FieldInfo ItemName = typeof(OptionItemBase).GetField("m_ItemNameText", Private);
+        private static readonly NativeField Prefab = NativeField.Find(typeof(OptionItemHolder), "m_SelectPrefab", Private);
+        private static readonly NativeField SliderPrefab = NativeField.Find(typeof(OptionItemHolder), "m_SliderPrefab", Private);
+        private static readonly NativeField SliderValueText = NativeField.Find(typeof(OptionItemSlider), "m_ValueText", Private);
+        private static readonly NativeField Content = NativeField.Find(typeof(OptionItemHolder), "m_OptionContentRoot", Private);
+        private static readonly NativeField Current = NativeField.Find(typeof(OptionItemHolder), "m_CurrentOptionItem", Private);
+        private static readonly NativeField IsOpen = NativeField.Find(typeof(OptionItemHolder), "m_IsOpen", Private);
+        private static readonly NativeField Parameter = NativeField.Find(typeof(OptionItemBase), "m_OptionParam", Private);
+        private static readonly NativeField ItemName = NativeField.Find(typeof(OptionItemBase), "m_ItemNameText", Private);
 
         private readonly ConfigEntry<bool> showMap;
         private readonly ConfigEntry<int> mapSize;
@@ -47,8 +52,10 @@ namespace AnomalithMinimap
 
         internal void Refresh()
         {
-            if (failed || DialogManager.Instance == null || !DialogManager.IsOpenDialog ||
-                !(DialogManager.GetTopDialog() is OptionMenu currentMenu) || !currentMenu.isActiveAndEnabled)
+            if (failed || DialogManager.Instance == null || !DialogManager.IsOpenDialog)
+                return;
+            var currentMenu = NativeUnity.Cast<OptionMenu>(DialogManager.GetTopDialog());
+            if (currentMenu == null || !currentMenu.isActiveAndEnabled)
                 return;
 
             try
@@ -106,7 +113,7 @@ namespace AnomalithMinimap
                 return false;
 
             var prefab = Prefab?.GetValue(holder) as OptionItemSelect;
-            var audioHolder = menu.GetOptionHolderList().Find(candidate =>
+            var audioHolder = NativeUnity.Items(menu.GetOptionHolderList()).FirstOrDefault(candidate =>
                 candidate != null && candidate.m_HolderGroupType == OptionGroupType.SOUND);
             var sliderPrefab = SliderPrefab?.GetValue(audioHolder ?? holder) as OptionItemSlider;
             var content = Content?.GetValue(holder) as RectTransform;
@@ -129,12 +136,14 @@ namespace AnomalithMinimap
                 m_Value = displayedSize
             }, SizeLabel);
             sizeValue.text = sizeText;
+#if !ANOMALITH_IL2CPP
             if (Chainloader.PluginInfos.TryGetValue(TrackerId, out var trackerInfo) &&
                 trackerInfo.Instance != null &&
                 trackerInfo.Instance.Config.TryGetEntry("Tracker", "ShowPinnedItem", out ConfigEntry<bool> showPin))
             {
                 AddRow(prefab, content, "Pinned Item", "LABS_PINNED_ITEM_VISIBILITY", showPin);
             }
+#endif
             holder.MaskUpdate();
             logger.LogInfo($"Added {rows.Count} native overlay toggles and the Minimap Size slider to Other Settings.");
             return true;
@@ -175,7 +184,7 @@ namespace AnomalithMinimap
             Parameter.SetValue(item, param);
             foreach (var component in name.GetComponents<Behaviour>())
             {
-                if (component.GetType().Name == "nnLocalizeDataUGUI")
+                if (NativeUnity.IsLocalized(component))
                 {
                     component.enabled = false;
                     Object.Destroy(component);
@@ -205,7 +214,7 @@ namespace AnomalithMinimap
                 foreach (var item in items)
                 {
                     list.Remove(item);
-                    restoreSelection |= ReferenceEquals(selected, item);
+                    restoreSelection |= selected == item;
                     if (item != null)
                     {
                         item.gameObject.SetActive(false);
@@ -217,7 +226,7 @@ namespace AnomalithMinimap
                         list[i].ObjectNumber = i;
                 if (restoreSelection)
                 {
-                    var replacement = list.FindLast(item => item != null && item.gameObject.activeSelf);
+                    var replacement = NativeUnity.Items(list).LastOrDefault(item => item != null && item.gameObject.activeSelf);
                     Current.SetValue(holder, replacement);
                     if (replacement != null && (bool)IsOpen.GetValue(holder))
                     {

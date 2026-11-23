@@ -10,32 +10,32 @@ namespace AnomalithUpgradeTracker
     internal sealed class WorkshopPinView
     {
         private const BindingFlags Fields = BindingFlags.Instance | BindingFlags.NonPublic;
-        private static readonly FieldInfo Materials = typeof(DevMenuBase).GetField("m_RequiredMaterials", Fields);
-        private static readonly FieldInfo Info = typeof(DevMenuBase).GetField("m_Info", Fields);
-        private static readonly FieldInfo MaterialRows = typeof(RequiredMaterials).GetField("m_NeedMatTextInsList", Fields);
-        private static readonly FieldInfo LeftMaterialColumn = typeof(RequiredMaterials).GetField("m_NeedMatTextsRootL", Fields);
-        private static readonly FieldInfo ButtonBackground = typeof(DevelopmetInfo).GetField("m_DevButtonBG", Fields);
-        private static readonly FieldInfo ButtonText = typeof(DevelopmetInfo).GetField("m_DevButtonText", Fields);
+        private static readonly NativeField Materials = NativeField.Find(typeof(DevMenuBase), "m_RequiredMaterials", Fields);
+        private static readonly NativeField Info = NativeField.Find(typeof(DevMenuBase), "m_Info", Fields);
+        private static readonly NativeField MaterialRows = NativeField.Find(typeof(RequiredMaterials), "m_NeedMatTextInsList", Fields);
+        private static readonly NativeField LeftMaterialColumn = NativeField.Find(typeof(RequiredMaterials), "m_NeedMatTextsRootL", Fields);
+        private static readonly NativeField ButtonBackground = NativeField.Find(typeof(DevelopmetInfo), "m_DevButtonBG", Fields);
+        private static readonly NativeField ButtonText = NativeField.Find(typeof(DevelopmetInfo), "m_DevButtonText", Fields);
 
         private readonly DevMenuBase menu;
         private readonly RequiredMaterials materials;
         private readonly RectTransform materialsPanel;
+        private readonly RectTransform parent;
         private readonly RectTransform rect;
         private readonly Button button;
         private readonly TextMeshProUGUI action;
         private readonly TextMeshProUGUI shortcut;
-        private readonly Vector3[] corners = new Vector3[4];
 
-        private WorkshopPinView(DevMenuBase menu, RequiredMaterials materials, RectTransform materialsPanel, Image background,
-            TextMeshProUGUI font, Action onToggle)
+        private WorkshopPinView(DevMenuBase menu, RectTransform parent, GameObject instance,
+            RequiredMaterials materials, RectTransform materialsPanel, Image background, TextMeshProUGUI font, Action onToggle)
         {
             this.menu = menu;
+            this.parent = parent;
             this.materials = materials;
             this.materialsPanel = materialsPanel;
-            rect = new GameObject("Workshop pin toggle", typeof(RectTransform), typeof(Image), typeof(Button))
-                .GetComponent<RectTransform>();
-            rect.SetParent(menu.transform, false);
-            rect.anchorMin = rect.anchorMax = ((RectTransform)menu.transform).pivot;
+            rect = instance.GetComponent<RectTransform>();
+            rect.SetParent(parent, false);
+            rect.anchorMin = rect.anchorMax = parent.pivot;
             rect.pivot = new Vector2(1, 0);
 
             var target = rect.GetComponent<Image>();
@@ -48,48 +48,55 @@ namespace AnomalithUpgradeTracker
             button = rect.GetComponent<Button>();
             button.targetGraphic = target;
             button.navigation = new Navigation { mode = Navigation.Mode.None };
+#if ANOMALITH_IL2CPP
+            button.onClick.AddListener(onToggle);
+#else
             button.onClick.AddListener(() => onToggle());
+#endif
             action = CreateText("Pin action", font, 21, TextAlignmentOptions.MidlineLeft);
             action.color = new Color(0.92f, 0.98f, 0.94f);
             shortcut = CreateText("Pin shortcut", font, 17, TextAlignmentOptions.MidlineRight);
             shortcut.color = new Color(0.78f, 0.88f, 0.84f);
-            rect.gameObject.SetActive(false);
         }
 
         public static WorkshopPinView TryCreate(DevMenuBase menu, Action onToggle)
         {
             var materials = Materials?.GetValue(menu) as RequiredMaterials;
             var info = Info?.GetValue(menu) as DevelopmetInfo;
-            if (materials == null || info == null || !(menu.transform is RectTransform))
+            var parent = NativeUnity.Cast<RectTransform>(menu.transform);
+            if (materials == null || info == null || parent == null)
                 return null;
             var column = LeftMaterialColumn?.GetValue(materials) as RectTransform;
-            if (column == null || !(column.parent is RectTransform materialsPanel))
+            if (column == null || !(NativeUnity.Cast<RectTransform>(column.parent) is RectTransform materialsPanel))
                 return null;
             var background = ButtonBackground?.GetValue(info) as Image;
             var font = ButtonText?.GetValue(info) as TextMeshProUGUI;
             return font == null || font.font == null ? null :
-                new WorkshopPinView(menu, materials, materialsPanel, background, font, onToggle);
+                NativeUnity.CreateInactive("Workshop pin toggle",
+                    instance => new WorkshopPinView(menu, parent, instance, materials, materialsPanel, background, font, onToggle),
+                    typeof(RectTransform), typeof(Image), typeof(Button));
         }
 
         public bool IsFor(DevMenuBase candidate) => rect != null && menu == candidate;
 
         public void Show(bool pinned, string key)
         {
-            if (rect == null || materials == null || materialsPanel == null || !materials.gameObject.activeInHierarchy ||
-                !(MaterialRows?.GetValue(materials) is List<GameObject> rows))
+            if (rect == null || parent == null || materials == null || materialsPanel == null ||
+                !materials.gameObject.activeInHierarchy)
             {
                 Hide();
                 return;
             }
 
-            var parent = (RectTransform)rect.parent;
+            var rows = NativeUnity.FieldItems<GameObject>(MaterialRows?.GetValue(materials));
             float top = float.NegativeInfinity;
             foreach (var row in rows)
             {
-                if (row == null || !row.activeInHierarchy || !(row.transform is RectTransform rowRect))
+                if (row == null || !row.activeInHierarchy ||
+                    !(NativeUnity.Cast<RectTransform>(row.transform) is RectTransform rowRect))
                     continue;
-                rowRect.GetWorldCorners(corners);
-                top = Mathf.Max(top, parent.InverseTransformPoint(corners[2]).y);
+                var corner = rowRect.TransformPoint((Vector3)rowRect.rect.max);
+                top = Mathf.Max(top, parent.InverseTransformPoint(corner).y);
             }
             if (float.IsNegativeInfinity(top))
             {
@@ -143,7 +150,7 @@ namespace AnomalithUpgradeTracker
 
         private TextMeshProUGUI CreateText(string name, TextMeshProUGUI font, float size, TextAlignmentOptions alignment)
         {
-            var text = new GameObject(name, typeof(RectTransform), typeof(TextMeshProUGUI))
+            var text = NativeUnity.CreateObject(name, typeof(RectTransform), typeof(TextMeshProUGUI))
                 .GetComponent<TextMeshProUGUI>();
             text.rectTransform.SetParent(rect, false);
             text.rectTransform.anchorMin = Vector2.zero;

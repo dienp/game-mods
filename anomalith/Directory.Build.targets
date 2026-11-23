@@ -1,9 +1,43 @@
 <Project>
+  <ItemGroup Condition="'$(AnomalithMod)' == 'true'">
+    <Compile Include="$(MSBuildThisFileDirectory)shared/NativeField.cs" Link="NativeField.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)shared/NativeUnity.cs" Link="NativeUnity.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)shared/NativeToggleOption.cs" Link="NativeToggleOption.cs"
+             Condition="'$(MSBuildProjectName)' != 'AnomalithMinimap' And '$(MSBuildProjectName)' != 'AnomalithQuickSwitch'" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(AnomalithMod)' == 'true' And '$(AnomalithIl2Cpp)' == 'true'">
+    <DefineConstants>$(DefineConstants);ANOMALITH_IL2CPP</DefineConstants>
+    <LangVersion>10.0</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(AnomalithMod)' == 'true' And '$(AnomalithIl2Cpp)' == 'true'">
+    <Compile Include="$(MSBuildThisFileDirectory)shared/Il2CppPluginHost.cs" Link="Il2CppPluginHost.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)shared/Il2CppDebugHost.cs" Link="Il2CppDebugHost.cs"
+             Condition="'$(Configuration)' == 'Debug'" />
+    <Compile Include="$(MSBuildThisFileDirectory)shared/Il2CppKeyboardShortcut.cs" Link="Il2CppKeyboardShortcut.cs"
+             Condition="'$(MSBuildProjectName)' == 'AnomalithMinimap' Or '$(MSBuildProjectName)' == 'AnomalithUpgradeTracker'" />
+    <Reference Include="BepInEx.Core" HintPath="$(BepInExCore)/BepInEx.Core.dll" Private="false" />
+    <Reference Include="BepInEx.Unity.Common" HintPath="$(BepInExCore)/BepInEx.Unity.Common.dll" Private="false" />
+    <Reference Include="BepInEx.Unity.IL2CPP" HintPath="$(BepInExCore)/BepInEx.Unity.IL2CPP.dll" Private="false" />
+    <Reference Include="Il2CppInterop.Runtime" HintPath="$(BepInExCore)/Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="Il2Cppmscorlib" HintPath="$(GameManaged)/Il2Cppmscorlib.dll" Private="false" />
+  </ItemGroup>
+
+  <Target Name="CheckAnomalithIl2CppReferences" BeforeTargets="ResolveAssemblyReferences"
+          Condition="'$(AnomalithMod)' == 'true' And '$(AnomalithIl2Cpp)' == 'true'">
+    <Error Condition="!Exists('$(GameManaged)/Assembly-CSharp.dll') Or !Exists('$(BepInExCore)/BepInEx.Unity.IL2CPP.dll')"
+           Text="Install BepInEx 6 for Unity IL2CPP and launch ANOMALITH once to generate its interop assemblies." />
+  </Target>
+
   <Target Name="DeployAnomalithDebugPlugin" AfterTargets="Build"
-          Condition="'$(Configuration)' == 'Debug' And '$(DeployToScriptEngine)' == 'true'">
+          Condition="'$(AnomalithMod)' == 'true' And '$(Configuration)' == 'Debug' And
+                     ('$(DeployAnomalithDebug)' == 'true' Or '$(DeployToScriptEngine)' == 'true')">
     <PropertyGroup>
       <AnomalithScriptsDir Condition="'$(AnomalithScriptsDir)' == ''">$(AnomalithDir)/BepInEx/scripts</AnomalithScriptsDir>
+      <AnomalithDebugDir>$(AnomalithScriptsDir)</AnomalithDebugDir>
+      <AnomalithDebugDir Condition="'$(AnomalithIl2Cpp)' == 'true'">$(AnomalithDir)/BepInEx/development</AnomalithDebugDir>
     </PropertyGroup>
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(AnomalithScriptsDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(AnomalithDebugDir)" SkipUnchangedFiles="true" />
   </Target>
 </Project>

@@ -1,8 +1,30 @@
 # ANOMALITH Mods
 
-BepInEx mods for the Windows x64 Unity Mono build of [ANOMALITH on Steam](https://store.steampowered.com/app/4017880/ANOMALITH/).
+BepInEx mods for the Windows x64 builds of [ANOMALITH on Steam](https://store.steampowered.com/app/4017880/ANOMALITH/).
 
-## Quick install
+## Compatibility
+
+ANOMALITH Mods v1.0.8 targets Windows x64 Unity IL2CPP. Testing used
+BepInEx 6.0.0-be.793 on the supplied copy of Steam build `26773190`, as
+confirmed by the tester. All six plugins passed startup checks. Live checks
+covered HUD numbers, Minimap, Workshop pinning and attachment compatibility,
+and the inventory storage tooltip. Auto Reload and Quick Weapon Switch
+gameplay checks are pending. See the [compatibility test record](docs/compatibility-26773190.md).
+
+## Quick install for v1.0.8 on IL2CPP
+
+1. Find `Anomalith.exe` in **Steam → Manage → Browse local files**.
+2. Install [BepInEx 6 IL2CPP for Windows x64](https://docs.bepinex.dev/master/articles/user_guide/installation/unity_il2cpp.html)
+   in that folder. Use a clean loader installation if upgrading from BepInEx 5.
+   Launch the game once with no plugins and close it after the title screen.
+3. Extract `anomalith-mods-v1.0.8-il2cpp.zip` into the folder containing
+   `Anomalith.exe`. For an individual install, copy its DLL into `BepInEx/plugins`.
+   Remove older copies of the ANOMALITH mods from `BepInEx/plugins` and `BepInEx/scripts`.
+4. Launch the game and check **Options → Other Settings** for mod controls.
+
+## Quick install for the published Mono release
+
+The published v1.0.7 ZIP targets Windows x64 Unity Mono with BepInEx 5.
 
 1. Open the folder containing `Anomalith.exe`. In Steam, right-click ANOMALITH and choose **Manage → Browse local files**.
 2. If needed, extract [BepInEx 5.4.23.6 for Windows x64](https://github.com/BepInEx/BepInEx/releases/tag/v5.4.23.6) into that folder. Launch the game once, then close it.
@@ -10,12 +32,6 @@ BepInEx mods for the Windows x64 Unity Mono build of [ANOMALITH on Steam](https:
 4. Launch the game. BepInEx loads the mods automatically.
 
 If upgrading from v1.0.1 or v1.0.2, remove the old Minimap and Upgrade Tracker DLLs from `BepInEx/scripts` to avoid loading duplicates.
-
-## Compatibility
-
-Future releases will list the tested ANOMALITH Steam Build ID alongside the
-mod suite version and the checks performed. Look for the same compatibility
-note here, in the release notes, and on [Nexus Mods](https://www.nexusmods.com/anomalith/mods/10).
 
 ## Mods
 
@@ -32,7 +48,11 @@ note here, in the release notes, and on [Nexus Mods](https://www.nexusmods.com/a
 
 ### HP and MP numbers
 
-![Current and maximum HP and MP beside the native bars, with the HP numbers matching the health bar color](docs/screenshots/hp-mp-numbers.png)
+![Front Entrance on build 26773190 showing the minimap, pinned recipe, and HP and MP numbers beside the native bars](docs/screenshots/gameplay-il2cpp-26773190.png)
+
+### Inventory storage count
+
+![The Sedative (Medium) inventory tooltip shows the Storage icon and a count of x 007](docs/screenshots/inventory-storage-count.png)
 
 ### Minimap and upgrade checklist
 
@@ -52,23 +72,43 @@ note here, in the release notes, and on [Nexus Mods](https://www.nexusmods.com/a
 
 ## Build from source
 
-Install the workspace dependencies with `npm ci` at the `game-mods` root. Set
-`AnomalithDir` to a local ANOMALITH installation with BepInEx 5.
+Install the workspace dependencies with `npm ci` at the `game-mods` root.
+Set `AnomalithDir` to the folder that contains `Anomalith.exe`.
+
+- For Mono, install BepInEx 5.4.23.6. Set `AnomalithDir` to that installation.
+- For IL2CPP, install [BepInEx 6 IL2CPP Windows x64](https://docs.bepinex.dev/master/articles/user_guide/installation/unity_il2cpp.html).
+  Launch the game once with an empty plugins folder to generate `BepInEx/interop`.
+  Build against the same installation.
 
 ```powershell
-$env:AnomalithDir = 'E:/Games/ANOMALITH'
+$env:AnomalithDir = 'E:/Games/ANOMALITH.Build.26773190'
 npx nx run-many -t build --projects=tag:game:anomalith
 npx nx run-many -t spec --projects=tag:game:anomalith
 ```
 
-Build one mod with `npx nx build anomalith-minimap`. Release DLLs are under
-`anomalith/mods/<mod>/bin/Release/netstandard2.1/` and go in
-`BepInEx/plugins`. Use `npm run spec -- mods/minimap <args>` to run other
-OpenSpec commands in that mod.
+Build one mod with `npx nx build anomalith-minimap`. Each mod's
+`bin/Release/netstandard2.1/` contains the Mono DLL and `bin/Release/net6.0/`
+contains the IL2CPP DLL. Install the DLL for your runtime in `BepInEx/plugins`.
+Use `npm run spec -- mods/minimap <args>` to run other OpenSpec commands.
 
 ### Hot reload during development
 
-Set up ScriptEngine 11.2 in the local BepInEx installation. Remove any installed
-release copy of the mod you are developing so ScriptEngine loads a single copy.
-Then run `npx nx run anomalith-minimap:dev`. The watcher rebuilds on source
-changes and copies the Debug DLL to `BepInEx/scripts` for ScriptEngine to reload.
+Set `AnomalithDir` to the development game installation and start the mod's
+watcher, for example `npx nx run anomalith-upgrade-tracker:dev`.
+
+- **Mono:** Set up ScriptEngine 11.2. Remove the mod's startup copy from
+  `BepInEx/plugins` so ScriptEngine loads a single copy. The watcher deploys
+  Debug builds to `BepInEx/scripts`.
+- **IL2CPP:** With the game closed, replace the mod's Release DLL in
+  `BepInEx/plugins` with the first `bin/Debug/net6.0/` build. Launch the game
+  once to start the Debug loader. The watcher deploys subsequent builds to
+  `BepInEx/development`, where the running plugin picks them up. Check
+  `BepInEx/LogOutput.log` for the `Hot reloaded` entry after each build.
+
+Use `nx build` to produce Release DLLs. The IL2CPP hot-reload loader is
+compiled only into Debug builds.
+
+To verify IL2CPP hot reload in a running Debug session, run
+`.\anomalith\scripts\Test-Il2CppReload.ps1 -AnomalithDir $env:AnomalithDir`.
+The check updates each development DLL's timestamp and waits for a new
+reload log entry in the same game process.

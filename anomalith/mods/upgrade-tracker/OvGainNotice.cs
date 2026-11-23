@@ -6,9 +6,9 @@ namespace AnomalithUpgradeTracker
     internal static class OvGainNotice
     {
         private const BindingFlags Fields = BindingFlags.Instance | BindingFlags.NonPublic;
-        private static readonly FieldInfo GainCoroutine = typeof(MoneyUI).GetField("AnimCor", Fields);
-        private static readonly FieldInfo GainStep = typeof(MoneyUI).GetField("step", Fields);
-        private static readonly FieldInfo Animation = typeof(MoneyUI).GetField("anim", Fields);
+        private static readonly NativeField GainCoroutine = NativeField.Find(typeof(MoneyUI), "AnimCor", Fields);
+        private static readonly NativeField GainStep = NativeField.Find(typeof(MoneyUI), "step", Fields);
+        private static readonly NativeField Animation = NativeField.Find(typeof(MoneyUI), "anim", Fields);
         private static readonly int FadeOut = Animator.StringToHash("FadeOut");
 
         internal static bool IsActive(MoneyUI money)

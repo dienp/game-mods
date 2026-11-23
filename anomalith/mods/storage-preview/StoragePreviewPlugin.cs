@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using Anomalith;
 using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
@@ -13,22 +14,66 @@ using UnityEngine.UI;
 
 namespace AnomalithStoragePreview
 {
-    [BepInPlugin(PluginId, "ANOMALITH Inventory Storage Preview", "1.0.0")]
+#if ANOMALITH_IL2CPP
+    [BepInPlugin("labs.anomalith.storagepreview", "ANOMALITH Inventory Storage Preview", "1.0.1")]
+#if DEBUG
+    public sealed class PluginLoader : Il2CppDebugHost<DevelopmentDriver, StoragePreviewPlugin>
+    {
+    }
+
+    public sealed class DevelopmentDriver : UnityEngine.MonoBehaviour
+    {
+        public DevelopmentDriver(System.IntPtr pointer) : base(pointer)
+        {
+        }
+
+        private void Update() => Il2CppDebugSession.Current?.Update();
+        private void LateUpdate() => Il2CppDebugSession.Current?.LateUpdate();
+        private void OnGUI() => Il2CppDebugSession.Current?.Draw();
+        private void OnDestroy() => Il2CppDebugSession.Current?.Dispose();
+    }
+
+    public sealed class StoragePreviewPlugin : Il2CppDebugFeature
+    {
+#else
+    public sealed class PluginLoader : Il2CppPluginHost<StoragePreviewPlugin>
+    {
+    }
+
+    public sealed class StoragePreviewPlugin : UnityEngine.MonoBehaviour
+    {
+        public StoragePreviewPlugin(System.IntPtr pointer) : base(pointer)
+        {
+        }
+
+        private ConfigFile Config => Il2CppPluginContext.Config;
+        private BepInEx.Logging.ManualLogSource Logger => Il2CppPluginContext.Log;
+#endif
+#else
+    [BepInPlugin(PluginId, "ANOMALITH Inventory Storage Preview", "1.0.1")]
     public sealed class StoragePreviewPlugin : BaseUnityPlugin
     {
+#endif
         private const string PluginId = "labs.anomalith.storagepreview";
         private const string CountPrefix = "x ";
-        private static readonly FieldInfo DetailText =
-            AccessTools.DeclaredField(typeof(ItemPopUp), "m_InventoryPopUpItemDeteilText");
+        private static readonly NativeField DetailText =
+            NativeField.Find(typeof(ItemPopUp), "m_InventoryPopUpItemDeteilText",
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
         private static readonly Dictionary<TextMeshProUGUI, Image> Icons = new Dictionary<TextMeshProUGUI, Image>();
         private static ConfigEntry<bool> enabledPreview;
         private Harmony harmony;
-        private StoragePreviewOption option;
+        private NativeToggleOption option;
 
+#if ANOMALITH_IL2CPP
+        private void Awake()
+#else
         private IEnumerator Start()
+#endif
         {
+#if !ANOMALITH_IL2CPP
             // Wait for ScriptEngine to remove the previous instance and its patch.
             yield return null;
+#endif
             enabledPreview = Config.Bind("Inventory", "Enabled", true, "Show the Base Storage count in Inventory tooltips.");
             harmony = new Harmony($"{PluginId}.{GetInstanceID()}");
             try
@@ -38,10 +83,15 @@ namespace AnomalithStoragePreview
                 if (popup == null || DetailText == null)
                     throw new InvalidOperationException("The Inventory tooltip is unavailable.");
 
+#if ANOMALITH_IL2CPP
+                harmony.Patch(popup, postfix: new HarmonyMethod(
+                    AccessTools.DeclaredMethod(typeof(StoragePreviewPlugin), nameof(UpdateStorageTooltip))));
+#else
                 harmony.Patch(popup,
                     postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(StoragePreviewPlugin), nameof(PositionIcon))),
                     transpiler: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(StoragePreviewPlugin), nameof(AddCountBeforeLayout))));
-                option = new StoragePreviewOption(enabledPreview, Logger);
+#endif
+                option = new NativeToggleOption(enabledPreview, Logger, "Inventory Storage Preview", "LABS_STORAGE_PREVIEW");
                 Logger.LogInfo("Inventory Storage Preview loaded.");
             }
             catch (Exception error)
@@ -71,6 +121,36 @@ namespace AnomalithStoragePreview
             Icons.Clear();
         }
 
+#if ANOMALITH_IL2CPP
+        private static void UpdateStorageTooltip(ItemPopUp __instance, InventoryCellItemData __0)
+        {
+            if (!TryAppendCount(__instance, __0))
+                return;
+
+            var description = __instance.m_InventoryPopUpItemDeteilText;
+            var cell = __0.inventoryItemUI;
+            var rect = __instance.m_InventoryPopUpObject?.GetComponent<RectTransform>();
+            var canvas = __instance.PopUpCanvas;
+            if (cell != null && rect != null && canvas != null && description.gameObject.activeInHierarchy)
+            {
+                description.ForceMeshUpdate(false, false);
+                Canvas.ForceUpdateCanvases();
+
+                var descriptionRect = description.rectTransform;
+                var size = rect.sizeDelta;
+                size.y = descriptionRect.sizeDelta.y - descriptionRect.anchoredPosition.y + __instance.PopUpTextSpace;
+                rect.sizeDelta = size;
+
+                var cellSize = cell.GetSize();
+                var scale = cell.GetRectTransform.lossyScale;
+                rect.position = cell.transform.position - new Vector3(cellSize.x * scale.x, cellSize.y * scale.y, 0f) * 0.5f;
+                var bounds = rect.rect;
+                rect.anchoredPosition += new Vector2(bounds.width * 0.5f, -bounds.height * 0.5f);
+                __instance.ClampToScreen(rect, canvas);
+            }
+            PositionIcon(__instance, __0);
+        }
+#else
         private static IEnumerable<CodeInstruction> AddCountBeforeLayout(IEnumerable<CodeInstruction> instructions)
         {
             var code = instructions.ToList();
@@ -90,23 +170,26 @@ namespace AnomalithStoragePreview
             return code;
         }
 
-        private static void AppendCount(ItemPopUp popup, InventoryCellItemData item)
+        private static void AppendCount(ItemPopUp popup, InventoryCellItemData item) => TryAppendCount(popup, item);
+#endif
+
+        private static bool TryAppendCount(ItemPopUp popup, InventoryCellItemData item)
         {
             var description = DetailText.GetValue(popup) as TextMeshProUGUI;
             if (description == null)
-                return;
+                return false;
 
             Icons.TryGetValue(description, out var icon);
             if (icon != null)
                 icon.enabled = false;
 
             if (!enabledPreview.Value)
-                return;
+                return false;
 
             var inventory = Inventory.Instance;
             if (item == null || inventory == null || SaveRootGame.Inventory?.Repository == null ||
                 string.IsNullOrEmpty(item.GetItemID))
-                return;
+                return false;
 
             int count = inventory.GetRepositoryItemCount(item.GetItemID);
             string quantity = $"{CountPrefix}{count:000}";
@@ -114,12 +197,12 @@ namespace AnomalithStoragePreview
             if (!description.richText || sprite == null)
             {
                 description.text = $"{description.text.TrimEnd()}\n\nIn Storage: {quantity}";
-                return;
+                return true;
             }
 
             if (icon == null)
             {
-                var iconObject = new GameObject("Storage count icon", typeof(RectTransform), typeof(Image));
+                var iconObject = NativeUnity.CreateObject("Storage count icon", typeof(RectTransform), typeof(Image));
                 iconObject.transform.SetParent(description.transform, false);
                 icon = iconObject.GetComponent<Image>();
                 icon.preserveAspect = true;
@@ -132,6 +215,7 @@ namespace AnomalithStoragePreview
             icon.enabled = true;
             description.text = $"{description.text.TrimEnd()}\n<size=45%>\n</size>" +
                 $"<space=2.65em><color=#EFFBF7><size=125%><b>{quantity}</b></size></color>";
+            return true;
         }
 
         private static Sprite GetStorageSprite()
@@ -140,7 +224,7 @@ namespace AnomalithStoragePreview
             if (pause == null)
                 return null;
 
-            var tab = pause.GetTabList()?.Find(candidate => candidate.tabType == PauseMenu.TabType.Repository);
+            var tab = NativeUnity.Items(pause.GetTabList()).FirstOrDefault(candidate => candidate.tabType == PauseMenu.TabType.Repository);
             var image = tab?.tabIcon != null ? tab.tabIcon.GetComponent<Image>() : null;
             return image != null ? image.overrideSprite : null;
         }

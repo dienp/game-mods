@@ -66,7 +66,7 @@ namespace AnomalithUpgradeTracker
             foreach (var map in tables.mapTableData)
             {
                 if (map?.itemDataID == null || map.itemTableID == null ||
-                    !map.itemTableID.Any(variant => !string.IsNullOrEmpty(variant)) ||
+                    !NativeUnity.Items(map.itemTableID).Any(variant => !string.IsNullOrEmpty(variant)) ||
                     string.IsNullOrEmpty(map.mapID))
                     continue;
 

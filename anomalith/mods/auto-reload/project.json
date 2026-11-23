@@ -8,7 +8,7 @@
     "build": {
       "executor": "nx:run-commands",
       "cache": false,
-      "outputs": ["{projectRoot}/bin/Release/netstandard2.1"],
+      "outputs": ["{projectRoot}/bin/Release/netstandard2.1", "{projectRoot}/bin/Release/net6.0"],
       "options": {
         "cwd": "anomalith/mods/auto-reload",
         "command": "dotnet build -c Release --nologo"
@@ -19,7 +19,7 @@
       "continuous": true,
       "options": {
         "cwd": "anomalith/mods/auto-reload",
-        "command": "dotnet watch --no-hot-reload build -c Debug --nologo /p:DeployToScriptEngine=true"
+        "command": "dotnet watch --no-hot-reload build -c Debug --nologo /p:DeployAnomalithDebug=true"
       }
     },
     "spec": {

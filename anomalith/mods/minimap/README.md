@@ -1,6 +1,6 @@
 # ANOMALITH Minimap
 
-A Windows x64 BepInEx plugin for ANOMALITH's Unity Mono build. It shows the
+A Windows x64 BepInEx plugin for ANOMALITH. It shows the
 native floor plan and your current position and facing in the bottom-left
 corner in the Base and during Dives. The plan follows the player and switches
 floors automatically. The translucent square matches the full width of the
@@ -26,14 +26,14 @@ See [runtime verification](docs/verification.md).
 
 ## Build and install
 
-Requires the .NET 8 SDK, a local Windows x64 ANOMALITH installation, BepInEx
-5.4.23.6. The project targets `netstandard2.1` and
-references assemblies from the game and loader. Run from the workspace root.
+Requires the .NET 8 SDK and a local Windows x64 ANOMALITH installation with
+BepInEx. See the [tested builds](../../docs/compatibility-26773190.md) and
+[build setup](../../README.md#build-from-source). Run from the workspace root.
 
 ```powershell
-$env:AnomalithDir = 'E:/Games/ANOMALITH'
+$env:AnomalithDir = 'E:/Games/ANOMALITH.Build.26773190'
 npx nx build anomalith-minimap
-Copy-Item -LiteralPath 'anomalith/mods/minimap/bin/Release/netstandard2.1/AnomalithMinimap.dll' -Destination (Join-Path $env:AnomalithDir 'BepInEx/plugins')
+Copy-Item -LiteralPath 'anomalith/mods/minimap/bin/Release/net6.0/AnomalithMinimap.dll' -Destination (Join-Path $env:AnomalithDir 'BepInEx/plugins')
 npx nx run anomalith-minimap:spec
 ```
 

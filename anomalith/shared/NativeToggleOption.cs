@@ -1,3 +1,4 @@
+using System.Linq;
 using System;
 using System.Reflection;
 using BepInEx.Configuration;
@@ -6,23 +7,24 @@ using TMPro;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-namespace AnomalithStoragePreview
+namespace Anomalith
 {
-    internal sealed class StoragePreviewOption : IDisposable
+    internal sealed class NativeToggleOption : IDisposable
     {
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
-        private const string Label = "Inventory Storage Preview";
 
         // Use the same native ON/OFF prefab and local parameters as the overlay settings.
-        private static readonly FieldInfo Prefab = typeof(OptionItemHolder).GetField("m_SelectPrefab", Private);
-        private static readonly FieldInfo Content = typeof(OptionItemHolder).GetField("m_OptionContentRoot", Private);
-        private static readonly FieldInfo Current = typeof(OptionItemHolder).GetField("m_CurrentOptionItem", Private);
-        private static readonly FieldInfo IsOpen = typeof(OptionItemHolder).GetField("m_IsOpen", Private);
-        private static readonly FieldInfo Parameter = typeof(OptionItemBase).GetField("m_OptionParam", Private);
-        private static readonly FieldInfo ItemName = typeof(OptionItemBase).GetField("m_ItemNameText", Private);
+        private static readonly NativeField Prefab = NativeField.Find(typeof(OptionItemHolder), "m_SelectPrefab", Private);
+        private static readonly NativeField Content = NativeField.Find(typeof(OptionItemHolder), "m_OptionContentRoot", Private);
+        private static readonly NativeField Current = NativeField.Find(typeof(OptionItemHolder), "m_CurrentOptionItem", Private);
+        private static readonly NativeField IsOpen = NativeField.Find(typeof(OptionItemHolder), "m_IsOpen", Private);
+        private static readonly NativeField Parameter = NativeField.Find(typeof(OptionItemBase), "m_OptionParam", Private);
+        private static readonly NativeField ItemName = NativeField.Find(typeof(OptionItemBase), "m_ItemNameText", Private);
 
         private readonly ConfigEntry<bool> enabled;
         private readonly ManualLogSource logger;
+        private readonly string label;
+        private readonly string id;
         private OptionMenu menu;
         private OptionItemHolder holder;
         private OptionItemSelect item;
@@ -31,16 +33,20 @@ namespace AnomalithStoragePreview
         private int displayedValue;
         private bool failed;
 
-        internal StoragePreviewOption(ConfigEntry<bool> enabled, ManualLogSource logger)
+        internal NativeToggleOption(ConfigEntry<bool> enabled, ManualLogSource logger, string label, string id)
         {
             this.enabled = enabled;
             this.logger = logger;
+            this.label = label;
+            this.id = id;
         }
 
         internal void Refresh()
         {
-            if (failed || DialogManager.Instance == null || !DialogManager.IsOpenDialog ||
-                !(DialogManager.GetTopDialog() is OptionMenu currentMenu) || !currentMenu.isActiveAndEnabled)
+            if (failed || DialogManager.Instance == null || !DialogManager.IsOpenDialog)
+                return;
+            var currentMenu = NativeUnity.Cast<OptionMenu>(DialogManager.GetTopDialog());
+            if (currentMenu == null || !currentMenu.isActiveAndEnabled)
                 return;
 
             try
@@ -52,14 +58,14 @@ namespace AnomalithStoragePreview
                         return;
                 }
 
-                if (name.text != Label)
-                    name.text = Label;
+                if (name.text != label)
+                    name.text = label;
 
                 if (param.m_Value != displayedValue)
                 {
                     displayedValue = param.m_Value;
                     enabled.Value = displayedValue == 0;
-                    logger.LogInfo($"Inventory Storage Preview set to {(enabled.Value ? "ON" : "OFF")}.");
+                    logger.LogInfo($"{label} set to {(enabled.Value ? "ON" : "OFF")}.");
                 }
                 else if (enabled.Value != (displayedValue == 0))
                 {
@@ -72,13 +78,13 @@ namespace AnomalithStoragePreview
             {
                 failed = true;
                 Dispose();
-                logger.LogWarning($"Could not add the Inventory Storage Preview setting. {error}");
+                logger.LogWarning($"Could not add the {label} setting. {error}");
             }
         }
 
         private bool Attach(OptionMenu currentMenu)
         {
-            holder = currentMenu.GetOptionHolderList().Find(candidate =>
+            holder = NativeUnity.Items(currentMenu.GetOptionHolderList()).FirstOrDefault(candidate =>
                 candidate != null && candidate.m_HolderGroupType == OptionGroupType.OTHERS);
             if (holder == null || holder.GetOptionList().Count == 0)
                 return false;
@@ -96,7 +102,7 @@ namespace AnomalithStoragePreview
             displayedValue = enabled.Value ? 0 : 1;
             param = new OptionParam
             {
-                m_Id = "LABS_STORAGE_PREVIEW",
+                m_Id = id,
                 m_OptionGroupType = OptionGroupType.OTHERS,
                 m_OptionParamType = OptionParamType.SELECT,
                 m_OptionSelectType = OptionSelectType.ON_OFF,
@@ -107,20 +113,20 @@ namespace AnomalithStoragePreview
             Parameter.SetValue(item, param);
             foreach (var component in name.GetComponents<Behaviour>())
             {
-                if (component.GetType().Name == "nnLocalizeDataUGUI")
+                if (NativeUnity.IsLocalized(component))
                 {
                     component.enabled = false;
                     Object.Destroy(component);
                 }
             }
-            name.text = Label;
+            name.text = label;
             item.SetHolder(holder);
             item.ObjectNumber = list.Count;
             item.IsInputActive = (bool)IsOpen.GetValue(holder);
             item.UIUpdate();
             list.Add(item);
             holder.MaskUpdate();
-            logger.LogInfo("Added the Inventory Storage Preview toggle to Other Settings.");
+            logger.LogInfo($"Added the {label} toggle to Other Settings.");
             return true;
         }
 
@@ -141,9 +147,9 @@ namespace AnomalithStoragePreview
                                 list[i].ObjectNumber = i;
                         }
 
-                        if (ReferenceEquals(Current.GetValue(holder), item))
+                        if ((Current.GetValue(holder) as OptionItemBase) == item)
                         {
-                            var replacement = list.FindLast(row => row != null && row.gameObject.activeSelf);
+                            var replacement = NativeUnity.Items(list).LastOrDefault(row => row != null && row.gameObject.activeSelf);
                             Current.SetValue(holder, replacement);
                             if (replacement != null && (bool)IsOpen.GetValue(holder))
                             {

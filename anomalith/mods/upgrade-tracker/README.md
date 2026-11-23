@@ -1,6 +1,6 @@
 # ANOMALITH Upgrade Tracker
 
-A Windows x64 BepInEx plugin for the Unity Mono edition of ANOMALITH. It shows
+A Windows x64 BepInEx plugin for ANOMALITH. It shows
 one Workshop recipe's material requirements during gameplay at Base and in
 Dives. It highlights nearby pickups during a Dive, and Deploy shows where to
 look for the materials you still need.
@@ -58,16 +58,16 @@ Controls and the pin are stored in
 
 ## Build and install
 
-Requires the .NET 8 SDK, ANOMALITH for Windows x64, and BepInEx 5.4.23.6.
-The project targets `netstandard2.1` and builds against
-the local game and BepInEx assemblies.
+Requires the .NET 8 SDK and a local Windows x64 ANOMALITH installation with
+BepInEx. See the [tested builds](../../docs/compatibility-26773190.md) and
+[build setup](../../README.md#build-from-source).
 
 From the repository root in PowerShell:
 
 ```powershell
-$env:AnomalithDir = 'E:/Games/ANOMALITH'
+$env:AnomalithDir = 'E:/Games/ANOMALITH.Build.26773190'
 npx nx build anomalith-upgrade-tracker
-Copy-Item -LiteralPath 'anomalith/mods/upgrade-tracker/bin/Release/netstandard2.1/AnomalithUpgradeTracker.dll' `
+Copy-Item -LiteralPath 'anomalith/mods/upgrade-tracker/bin/Release/net6.0/AnomalithUpgradeTracker.dll' `
     -Destination (Join-Path $env:AnomalithDir 'BepInEx/plugins')
 ```
 

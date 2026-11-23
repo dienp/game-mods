@@ -1,9 +1,16 @@
 using System.Linq;
+#if ANOMALITH_IL2CPP
+using System.Text.Json;
+using System.Text.Json.Serialization;
+#else
 using Newtonsoft.Json;
+#endif
 
 namespace AnomalithUpgradeTracker
 {
+#if !ANOMALITH_IL2CPP
     [JsonObject(MemberSerialization.Fields)]
+#endif
     internal sealed class PinnedRecipe
     {
         public const string ReadyToBuild = "Ready to build at the Workshop";
@@ -15,6 +22,17 @@ namespace AnomalithUpgradeTracker
         public string name;
         public Material[] materials;
 
+#if ANOMALITH_IL2CPP
+        private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions { IncludeFields = true };
+
+        internal static PinnedRecipe Deserialize(string json) => JsonSerializer.Deserialize<PinnedRecipe>(json, JsonOptions);
+        internal string Serialize() => JsonSerializer.Serialize(this, JsonOptions);
+
+        [JsonIgnore]
+#else
+        internal static PinnedRecipe Deserialize(string json) => JsonConvert.DeserializeObject<PinnedRecipe>(json);
+        internal string Serialize() => JsonConvert.SerializeObject(this);
+#endif
         public string DisplayName
         {
             get
@@ -31,10 +49,13 @@ namespace AnomalithUpgradeTracker
         {
             return kind != Kind.Unknown && kind == selectionKind && recipe != null &&
                 !string.IsNullOrEmpty(recipeId) && recipeId == recipe.m_ItemId &&
-                weaponId == (recipe as WeaponParamReinforceData)?.m_WeaponId &&
+                weaponId == NativeUnity.Cast<WeaponParamReinforceData>(recipe)?.m_WeaponId &&
                 (!exactStep || recipeLevel == recipe.GetDevLevel());
         }
 
+#if ANOMALITH_IL2CPP
+        [JsonIgnore]
+#endif
         public bool IsValid =>
             !string.IsNullOrWhiteSpace(name) &&
             materials != null && materials.Length > 0 &&
@@ -55,10 +76,10 @@ namespace AnomalithUpgradeTracker
             {
                 kind = kind,
                 recipeId = recipe.m_ItemId,
-                weaponId = (recipe as WeaponParamReinforceData)?.m_WeaponId,
+                weaponId = NativeUnity.Cast<WeaponParamReinforceData>(recipe)?.m_WeaponId,
                 recipeLevel = recipe.GetDevLevel(),
                 name = selector.GetItemName(),
-                materials = required.Where(material => material != null &&
+                materials = NativeUnity.Items(required).Where(material => material != null &&
                         !string.IsNullOrWhiteSpace(material.m_MatId) && material.m_Num > 0)
                     .GroupBy(material => material.m_MatId)
                     .Select(group => new Material
@@ -75,8 +96,8 @@ namespace AnomalithUpgradeTracker
         public static bool CanPin(DevelopmetData recipe)
         {
             return recipe != null && !recipe.IsSecletInfo() && !recipe.IsMaxDevLevel() &&
-                recipe.GetLevelNeedMatData()?.Any(material => material != null &&
-                    !string.IsNullOrWhiteSpace(material.m_MatId) && material.m_Num > 0) == true;
+                NativeUnity.Items(recipe.GetLevelNeedMatData()).Any(material => material != null &&
+                    !string.IsNullOrWhiteSpace(material.m_MatId) && material.m_Num > 0);
         }
 
         public string GetCompletionStatus(Inventory inventory, bool materialsReady)
@@ -114,17 +135,16 @@ namespace AnomalithUpgradeTracker
             if (kind == Kind.Reinforcement && !string.IsNullOrEmpty(weaponId))
                 return (DialogType.WeaonDevMenu, (int)(WeaponDevDatas.instance?.GetWeaponType(weaponId) ?? WeaponType.NONE));
             var recipe = string.IsNullOrEmpty(recipeId) ? null : GetCatalog()?.GetData(recipeId);
-            switch (recipe)
-            {
-                case ArmorDevData armor when armor.m_ArmorType != ArmorType.NONE:
-                    return (DialogType.ArmorDevMenu, (int)armor.m_ArmorType);
-                case WeaponDevData weapon:
-                    return (DialogType.WeaonDevMenu, (int)weapon.m_WeaponType);
-                case AttachmentDevData attachment:
-                    return (DialogType.AttachmentDevMenu, (int)attachment.m_AttachmentType);
-                default:
-                    return (default, -1);
-            }
+            var armor = NativeUnity.Cast<ArmorDevData>(recipe);
+            if (armor != null && armor.m_ArmorType != ArmorType.NONE)
+                return (DialogType.ArmorDevMenu, (int)armor.m_ArmorType);
+            var weapon = NativeUnity.Cast<WeaponDevData>(recipe);
+            if (weapon != null)
+                return (DialogType.WeaonDevMenu, (int)weapon.m_WeaponType);
+            var attachment = NativeUnity.Cast<AttachmentDevData>(recipe);
+            return attachment != null
+                ? (DialogType.AttachmentDevMenu, (int)attachment.m_AttachmentType)
+                : (default, -1);
         }
 
         private DevelopmentDatasBace GetCatalog()

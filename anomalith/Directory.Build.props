@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <AnomalithIl2Cpp Condition="'$(AnomalithDir)' != '' And Exists('$(AnomalithDir)/GameAssembly.dll') And Exists('$(AnomalithDir)/Anomalith_Data/il2cpp_data/Metadata/global-metadata.dat')">true</AnomalithIl2Cpp>
+    <AnomalithTargetFramework Condition="'$(AnomalithIl2Cpp)' == 'true'">net6.0</AnomalithTargetFramework>
+    <AnomalithTargetFramework Condition="'$(AnomalithTargetFramework)' == ''">netstandard2.1</AnomalithTargetFramework>
+    <NuGetLockFilePath Condition="'$(AnomalithIl2Cpp)' == 'true'">$(MSBuildProjectDirectory)/obj/il2cpp-packages.lock.json</NuGetLockFilePath>
+    <GameManaged Condition="'$(AnomalithIl2Cpp)' == 'true'">$(AnomalithDir)/BepInEx/interop</GameManaged>
+    <GameManaged Condition="'$(GameManaged)' == ''">$(AnomalithDir)/Anomalith_Data/Managed</GameManaged>
+    <BepInExCore>$(AnomalithDir)/BepInEx/core</BepInExCore>
+  </PropertyGroup>
+</Project>

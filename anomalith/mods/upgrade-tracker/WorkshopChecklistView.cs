@@ -13,15 +13,15 @@ namespace AnomalithUpgradeTracker
         private const float RowHeight = 44f;
         private const float RowsTop = 68f;
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
-        private static readonly FieldInfo DialogPrefabs = typeof(DialogManager).GetField("m_DialogPrefabList", Private);
-        private static readonly FieldInfo Materials = typeof(DevMenuBase).GetField("m_RequiredMaterials", Private);
-        private static readonly FieldInfo MaterialPrefab = typeof(RequiredMaterials).GetField("m_NeedMatTextPrefab", Private);
-        private static readonly FieldInfo SortTabs = typeof(DevMenuBase).GetField("m_SortTab", Private);
-        private static readonly FieldInfo TabSprites = typeof(PauseMenuTabGroup).GetField("pageSpriteList", Private);
-        private static readonly FieldInfo NormalColor = typeof(RequiredMaterials).GetField("m_NormalTextColor", Private);
-        private static readonly FieldInfo ShortageColor = typeof(RequiredMaterials).GetField("m_ShortageTextColor", Private);
-        private static readonly FieldInfo EnemyDrops = typeof(RequiredMaterials).GetField("EnemyDropItems", Private);
-        private static readonly FieldInfo IconMap = typeof(DocumentIcon).GetField("cachedIconMap",
+        private static readonly NativeField DialogPrefabs = NativeField.Find(typeof(DialogManager), "m_DialogPrefabList", Private);
+        private static readonly NativeField Materials = NativeField.Find(typeof(DevMenuBase), "m_RequiredMaterials", Private);
+        private static readonly NativeField MaterialPrefab = NativeField.Find(typeof(RequiredMaterials), "m_NeedMatTextPrefab", Private);
+        private static readonly NativeField SortTabs = NativeField.Find(typeof(DevMenuBase), "m_SortTab", Private);
+        private static readonly NativeField TabSprites = NativeField.Find(typeof(PauseMenuTabGroup), "pageSpriteList", Private);
+        private static readonly NativeField NormalColor = NativeField.Find(typeof(RequiredMaterials), "m_NormalTextColor", Private);
+        private static readonly NativeField ShortageColor = NativeField.Find(typeof(RequiredMaterials), "m_ShortageTextColor", Private);
+        private static readonly NativeField EnemyDrops = NativeField.Find(typeof(RequiredMaterials), "EnemyDropItems", Private);
+        private static readonly NativeField IconMap = NativeField.Find(typeof(DocumentIcon), "cachedIconMap",
             BindingFlags.Static | BindingFlags.NonPublic);
 
         private readonly GameObject root;
@@ -38,16 +38,16 @@ namespace AnomalithUpgradeTracker
         private readonly EnemyDropItemList enemyDrops;
         private readonly Texture2D rowTexture;
         private readonly List<Row> rows = new List<Row>();
-        private readonly List<DialogBase> prefabs;
+        private readonly DialogBase[] prefabs;
         private readonly bool embedded;
         private PinnedRecipe displayedRecipe;
         private float displayedWidth;
 
-        private WorkshopChecklistView(Transform owner, RequiredMaterials materials, NeedMatText template,
-            List<DialogBase> prefabs, bool embedded)
+        private WorkshopChecklistView(Transform owner, GameObject instance, RequiredMaterials materials,
+            NeedMatText template, DialogBase[] prefabs, RectTransform embeddedOwner)
         {
             this.prefabs = prefabs;
-            this.embedded = embedded;
+            embedded = embeddedOwner != null;
             nativeName = template.m_MatName;
             nativeCount = template.m_MatNum;
             materialIcon = template.m_Icon?.sprite;
@@ -68,14 +68,14 @@ namespace AnomalithUpgradeTracker
             });
             rowTexture.Apply(false, true);
 
-            root = new GameObject("Pinned Workshop Checklist", typeof(RectTransform));
+            root = instance;
             root.transform.SetParent(owner, false);
             if (embedded)
             {
-                var frame = (RectTransform)root.transform;
+                var frame = root.GetComponent<RectTransform>();
                 frame.anchorMin = Vector2.zero;
                 frame.anchorMax = Vector2.one;
-                frame.pivot = ((RectTransform)owner).pivot;
+                frame.pivot = embeddedOwner.pivot;
                 frame.offsetMin = frame.offsetMax = Vector2.zero;
             }
             else
@@ -111,23 +111,28 @@ namespace AnomalithUpgradeTracker
 
             sourceText = AddText("Material sources", nativeName, 18f, TextAlignmentOptions.TopLeft);
             sourceText.textWrappingMode = TextWrappingModes.Normal;
-            root.SetActive(false);
         }
 
         public GameObject Root => root;
 
         public static WorkshopChecklistView TryCreate(Transform owner, bool embedded = false)
         {
-            var manager = DialogManager.Instance;
-            if (manager == null || !(DialogPrefabs?.GetValue(manager) is List<DialogBase> prefabs))
+            var embeddedOwner = embedded ? NativeUnity.Cast<RectTransform>(owner) : null;
+            if (embedded && embeddedOwner == null)
                 return null;
-            var workshop = prefabs.OfType<WeaponDevMenu>().FirstOrDefault();
+            var manager = DialogManager.Instance;
+            if (manager == null)
+                return null;
+            var prefabs = NativeUnity.FieldItems<DialogBase>(DialogPrefabs?.GetValue(manager)).ToArray();
+            var workshop = prefabs.Select(NativeUnity.Cast<WeaponDevMenu>).FirstOrDefault(menu => menu != null);
             if (workshop == null || !(Materials?.GetValue(workshop) is RequiredMaterials materials) ||
                 materials == null || !(MaterialPrefab?.GetValue(materials) is GameObject rowPrefab) ||
                 rowPrefab == null || !rowPrefab.TryGetComponent<NeedMatText>(out var row) ||
                 row.m_MatName == null || row.m_MatNum == null)
                 return null;
-            return new WorkshopChecklistView(owner, materials, row, prefabs, embedded);
+            return NativeUnity.CreateInactive("Pinned Workshop Checklist",
+                instance => new WorkshopChecklistView(owner, instance, materials, row, prefabs, embeddedOwner),
+                typeof(RectTransform));
         }
 
         public void Show(PinnedRecipe recipe, string[] materials, int[] held, string sources, string completionStatus)
@@ -188,7 +193,7 @@ namespace AnomalithUpgradeTracker
 
         public void ShowDeploy(Rect bounds)
         {
-            var parent = (RectTransform)panel.parent;
+            var parent = root.GetComponent<RectTransform>();
             panel.anchorMin = panel.anchorMax = parent.pivot;
             panel.anchoredPosition = new Vector2(bounds.xMin, bounds.yMax);
             panel.pivot = new Vector2(0f, 1f);
@@ -206,11 +211,10 @@ namespace AnomalithUpgradeTracker
                 var (menu, index) = recipe.GetWorkshopCategory();
                 int menuIndex = (int)menu;
                 Sprite sprite = null;
-                if (index >= 0 && menuIndex >= 0 && menuIndex < prefabs.Count &&
-                    prefabs[menuIndex] is DevMenuBase prefab &&
-                    SortTabs?.GetValue(prefab) is PauseMenuTabGroup tabs && tabs != null &&
-                    TabSprites?.GetValue(tabs) is List<Sprite> sprites && index < sprites.Count)
-                    sprite = sprites[index];
+                if (index >= 0 && menuIndex >= 0 && menuIndex < prefabs.Length &&
+                    NativeUnity.Cast<DevMenuBase>(prefabs[menuIndex]) is DevMenuBase prefab &&
+                    SortTabs?.GetValue(prefab) is PauseMenuTabGroup tabs && tabs != null)
+                    sprite = NativeUnity.FieldItems<Sprite>(TabSprites?.GetValue(tabs)).ElementAtOrDefault(index);
                 categoryIcon.sprite = sprite;
                 categoryIcon.enabled = sprite != null;
                 float titleLeft = categoryIcon.enabled ? 60f : 16f;
@@ -289,7 +293,7 @@ namespace AnomalithUpgradeTracker
             if (row.MaterialId != id)
             {
                 row.MaterialId = id;
-                row.EnemyId = enemyDrops?.GetEnemiesWhoDropItem(id).FirstOrDefault();
+                row.EnemyId = NativeUnity.Items(enemyDrops?.GetEnemiesWhoDropItem(id)).FirstOrDefault();
             }
             Sprite icon = materialIcon;
             if (!string.IsNullOrEmpty(row.EnemyId) &&
@@ -320,7 +324,7 @@ namespace AnomalithUpgradeTracker
 
         private static RectTransform CreateRect(string name, Transform parent)
         {
-            var rect = new GameObject(name, typeof(RectTransform)).GetComponent<RectTransform>();
+            var rect = NativeUnity.CreateObject(name, typeof(RectTransform)).GetComponent<RectTransform>();
             rect.SetParent(parent, false);
             return rect;
         }

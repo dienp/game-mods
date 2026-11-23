@@ -11,11 +11,11 @@ namespace AnomalithUpgradeTracker
     internal sealed class DeploySourcesView
     {
         private const BindingFlags Fields = BindingFlags.Instance | BindingFlags.NonPublic;
-        private static readonly FieldInfo Groups = typeof(PortalWarpDialog).GetField("mapGroupList", Fields);
-        private static readonly FieldInfo SelectedGroup = typeof(PortalWarpDialog).GetField("groupCursorIdx", Fields);
-        private static readonly FieldInfo Graph = typeof(PortalWarpDialog).GetField("m_MapIconUI", Fields);
-        private static readonly FieldInfo TileText = typeof(MapIcon).GetField("m_MapName", Fields);
-        private static readonly FieldInfo ActiveArm = typeof(MapIconArm).GetField("m_OnObj", Fields);
+        private static readonly NativeField Groups = NativeField.Find(typeof(PortalWarpDialog), "mapGroupList", Fields);
+        private static readonly NativeField SelectedGroup = NativeField.Find(typeof(PortalWarpDialog), "groupCursorIdx", Fields);
+        private static readonly NativeField Graph = NativeField.Find(typeof(PortalWarpDialog), "m_MapIconUI", Fields);
+        private static readonly NativeField TileText = NativeField.Find(typeof(MapIcon), "m_MapName", Fields);
+        private static readonly NativeField ActiveArm = NativeField.Find(typeof(MapIconArm), "m_OnObj", Fields);
         private static readonly Color Accent = new Color(0.49f, 0.86f, 0.79f);
         private static readonly Color Foreground = new Color(0.91f, 0.98f, 0.95f);
         private static readonly Color Secondary = new Color(0.69f, 0.82f, 0.79f);
@@ -24,8 +24,7 @@ namespace AnomalithUpgradeTracker
         private readonly PortalWarpDialog dialog;
         private readonly RectTransform root;
         private readonly MapIconUI graph;
-        private readonly List<PortalWarpDialog.MapList> groups;
-        private readonly Vector3[] corners = new Vector3[4];
+        private readonly IEnumerable<PortalWarpDialog.MapList> mapGroups;
         private TableData indexedTables;
         private Dictionary<string, HashSet<string>> lootAreas;
         private WorkshopChecklistView checklist;
@@ -34,9 +33,9 @@ namespace AnomalithUpgradeTracker
         public DeploySourcesView(PortalWarpDialog dialog)
         {
             this.dialog = dialog;
-            groups = Groups?.GetValue(dialog) as List<PortalWarpDialog.MapList>;
+            mapGroups = NativeUnity.FieldItems<PortalWarpDialog.MapList>(Groups?.GetValue(dialog));
             graph = Graph?.GetValue(dialog) as MapIconUI;
-            root = new GameObject("Upgrade Tracker Deploy Sources", typeof(RectTransform))
+            root = NativeUnity.CreateObject("Upgrade Tracker Deploy Sources", typeof(RectTransform))
                 .GetComponent<RectTransform>();
             root.SetParent(dialog.transform, false);
             root.anchorMin = Vector2.zero;
@@ -63,8 +62,9 @@ namespace AnomalithUpgradeTracker
 
         public void Refresh(PinnedRecipe recipe, string[] names, int[] held)
         {
-            if (graph == null || groups == null ||
-                !(SelectedGroup?.GetValue(dialog) is int selected) || selected < 0 || selected >= groups.Count)
+            var groups = mapGroups.ToArray();
+            if (graph == null ||
+                !(SelectedGroup?.GetValue(dialog) is int selected) || selected < 0 || selected >= groups.Length)
             {
                 Hide();
                 return;
@@ -95,7 +95,7 @@ namespace AnomalithUpgradeTracker
                 .Select(icon => new
                 {
                     Icon = icon,
-                    Rect = icon.transform as RectTransform,
+                    Rect = NativeUnity.Cast<RectTransform>(icon.transform),
                     Name = (TileText?.GetValue(icon) as TextMeshProUGUI)?.text
                 }).Where(tile => tile.Rect != null).ToArray();
             var tables = MapManager.Instance == null ? null : MapManager.Instance.GetTableData;
@@ -143,7 +143,7 @@ namespace AnomalithUpgradeTracker
             }
             foreach (var arm in graph.GetComponentsInChildren<MapIconArm>())
                 if (ActiveArm?.GetValue(arm) is GameObject line && line.activeInHierarchy &&
-                    line.transform is RectTransform rect)
+                    NativeUnity.Cast<RectTransform>(line.transform) is RectTransform rect)
                     obstacles.Add(Bounds(rect));
 
             Rect selectedRow = Bounds(selectedButton.GetRectTransform);
@@ -310,9 +310,9 @@ namespace AnomalithUpgradeTracker
 
         private Rect Bounds(RectTransform target)
         {
-            target.GetWorldCorners(corners);
-            Vector2 min = root.InverseTransformPoint(corners[0]);
-            Vector2 max = root.InverseTransformPoint(corners[2]);
+            var bounds = target.rect;
+            Vector2 min = root.InverseTransformPoint(target.TransformPoint((Vector3)bounds.min));
+            Vector2 max = root.InverseTransformPoint(target.TransformPoint((Vector3)bounds.max));
             return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
         }
 
@@ -324,10 +324,9 @@ namespace AnomalithUpgradeTracker
         private static float LineHeight(TextMeshProUGUI text, float width) =>
             Mathf.Ceil(text.GetPreferredValues(text.text, width, 0).y) + 2;
 
-        private static void Place(RectTransform transform, Rect rect)
+        private void Place(RectTransform transform, Rect rect)
         {
-            var parent = (RectTransform)transform.parent;
-            transform.anchorMin = transform.anchorMax = parent.pivot;
+            transform.anchorMin = transform.anchorMax = root.pivot;
             transform.pivot = Vector2.zero;
             transform.anchoredPosition = rect.position;
             transform.sizeDelta = rect.size;
@@ -335,7 +334,7 @@ namespace AnomalithUpgradeTracker
 
         private RectTransform Paint(Rect rect, Color color)
         {
-            var image = new GameObject("Source accent", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
+            var image = NativeUnity.CreateObject("Source accent", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
             image.transform.SetParent(root, false);
             image.raycastTarget = false;
             image.color = color;
@@ -345,7 +344,7 @@ namespace AnomalithUpgradeTracker
 
         private TextMeshProUGUI Text(TextMeshProUGUI font, string content, float size, Color color)
         {
-            var text = new GameObject("Source text", typeof(RectTransform), typeof(TextMeshProUGUI))
+            var text = NativeUnity.CreateObject("Source text", typeof(RectTransform), typeof(TextMeshProUGUI))
                 .GetComponent<TextMeshProUGUI>();
             text.transform.SetParent(root, false);
             text.font = font.font;

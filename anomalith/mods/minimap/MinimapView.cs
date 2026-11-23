@@ -16,7 +16,6 @@ namespace AnomalithMinimap
         private readonly RawImage map;
         private readonly RectTransform marker;
         private readonly RectTransform landmarks;
-        private readonly Vector3[] healthCorners = new Vector3[4];
         private readonly List<Image> pointMarkers = new List<Image>();
         private readonly List<Vector2> pointPositions = new List<Vector2>();
         private readonly TextMeshProUGUI title;
@@ -99,10 +98,13 @@ namespace AnomalithMinimap
 
             Canvas source = health.canvas.rootCanvas;
             Camera camera = source.renderMode == RenderMode.ScreenSpaceOverlay ? null : source.worldCamera;
-            health.rectTransform.GetWorldCorners(healthCorners);
-            float left = RectTransformUtility.WorldToScreenPoint(camera, healthCorners[0]).x;
-            float right = RectTransformUtility.WorldToScreenPoint(camera, healthCorners[3]).x;
-            float size = (right - left) / canvas.scaleFactor;
+            var rect = health.rectTransform;
+            var bounds = rect.rect;
+            var left = rect.TransformPoint(new Vector3(bounds.xMin, bounds.yMin, 0));
+            var right = rect.TransformPoint(new Vector3(bounds.xMax, bounds.yMin, 0));
+            float leftX = RectTransformUtility.WorldToScreenPoint(camera, left).x;
+            float rightX = RectTransformUtility.WorldToScreenPoint(camera, right).x;
+            float size = Mathf.Abs(rightX - leftX) / canvas.scaleFactor;
             // HUD transitions can briefly report a positive but collapsed width.
             // Keep the default or last usable size until the full bar is ready.
             if (float.IsNaN(size) || float.IsInfinity(size) || size < ReferenceHealthWidth)
@@ -209,7 +211,7 @@ namespace AnomalithMinimap
 
         private static RectTransform CreateRect(string name, Transform parent)
         {
-            var rect = new GameObject(name, typeof(RectTransform)).GetComponent<RectTransform>();
+            var rect = NativeUnity.CreateObject(name, typeof(RectTransform)).GetComponent<RectTransform>();
             rect.SetParent(parent, false);
             rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
             return rect;

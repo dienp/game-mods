@@ -15,13 +15,16 @@ OFF. The preference is saved in
 
 ## Build and install
 
-Requires the .NET 8 SDK, a local Windows x64 ANOMALITH installation, and
-BepInEx 5. Run from the workspace root and close the game before replacing
-the startup plugin.
+Requires the .NET 8 SDK and a local Windows x64 ANOMALITH installation with
+BepInEx. See the [tested builds](../../docs/compatibility-26773190.md) and
+[build setup](../../README.md#build-from-source). Run from the workspace root
+and close the game before replacing the startup plugin.
 
 ```powershell
-$env:AnomalithDir = 'E:/Games/ANOMALITH'
+$env:AnomalithDir = 'E:/Games/ANOMALITH.Build.26773190'
 npx nx build anomalith-hud-numbers
-Copy-Item -LiteralPath 'anomalith/mods/hud-numbers/bin/Release/netstandard2.1/AnomalithHudNumbers.dll' -Destination (Join-Path $env:AnomalithDir 'BepInEx/plugins')
+Copy-Item -LiteralPath 'anomalith/mods/hud-numbers/bin/Release/net6.0/AnomalithHudNumbers.dll' -Destination (Join-Path $env:AnomalithDir 'BepInEx/plugins')
 npx nx run anomalith-hud-numbers:spec
 ```
+
+See the [automated HUD smoke test](docs/verification.md#il2cpp-smoke-test).

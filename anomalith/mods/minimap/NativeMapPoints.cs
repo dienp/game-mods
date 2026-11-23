@@ -8,12 +8,12 @@ namespace AnomalithMinimap
     internal sealed class NativeMapPoints
     {
         private const BindingFlags Fields = BindingFlags.Instance | BindingFlags.NonPublic;
-        private static readonly FieldInfo MainIcon = typeof(PauseMenuMap).GetField("m_QuestIconPrefab", Fields);
-        private static readonly FieldInfo SideIcon = typeof(PauseMenuMap).GetField("m_SubQuestIconPrefab", Fields);
-        private static readonly FieldInfo DoorIcon = typeof(PauseMenuMap).GetField("m_DoorIconPrefab", Fields);
-        private static readonly FieldInfo WarpIcon = typeof(PauseMenuMap).GetField("m_WarpIconPrefab", Fields);
-        private static readonly FieldInfo PortalIcon = typeof(PauseMenuMap).GetField("m_PortalIconPrefab", Fields);
-        private static readonly FieldInfo TravelIcon = typeof(PauseMenuMap).GetField("m_WarpPointIconPrefab", Fields);
+        private static readonly NativeField MainIcon = NativeField.Find(typeof(PauseMenuMap), "m_QuestIconPrefab", Fields);
+        private static readonly NativeField SideIcon = NativeField.Find(typeof(PauseMenuMap), "m_SubQuestIconPrefab", Fields);
+        private static readonly NativeField DoorIcon = NativeField.Find(typeof(PauseMenuMap), "m_DoorIconPrefab", Fields);
+        private static readonly NativeField WarpIcon = NativeField.Find(typeof(PauseMenuMap), "m_WarpIconPrefab", Fields);
+        private static readonly NativeField PortalIcon = NativeField.Find(typeof(PauseMenuMap), "m_PortalIconPrefab", Fields);
+        private static readonly NativeField TravelIcon = NativeField.Find(typeof(PauseMenuMap), "m_WarpPointIconPrefab", Fields);
 
         private readonly Icon main;
         private readonly Icon side;
@@ -35,7 +35,7 @@ namespace AnomalithMinimap
         public void Collect(NativeMap native, MapImageSetData map, MapManager manager, int floor, List<Point> points)
         {
             points.Clear();
-            var thresholds = manager.m_GetFloorPoint;
+            var thresholds = NativeUnity.Items(manager.m_GetFloorPoint);
 
             void Add(Transform transform, Icon icon, bool rotate = false)
             {
@@ -46,7 +46,7 @@ namespace AnomalithMinimap
                     points.Add(new Point(native.Project(map, position), icon, rotate ? -transform.eulerAngles.y : 0, rotate));
             }
 
-            void AddObjectives(List<GameObject> objectives, Icon icon)
+            void AddObjectives(IEnumerable<GameObject> objectives, Icon icon)
             {
                 if (objectives == null)
                     return;
@@ -58,8 +58,8 @@ namespace AnomalithMinimap
             var quests = QuestManager.Instance;
             if (quests != null)
             {
-                AddObjectives(quests.GetCurrentMainQuestTriggerList(), main);
-                AddObjectives(quests.GetCurrentSubQuestTriggerList(), side);
+                AddObjectives(NativeUnity.Items(quests.GetCurrentMainQuestTriggerList()), main);
+                AddObjectives(NativeUnity.Items(quests.GetCurrentSubQuestTriggerList()), side);
             }
 
             var portals = manager.GetAllPortal();
@@ -95,7 +95,7 @@ namespace AnomalithMinimap
             public readonly string Name;
             public readonly float Size;
 
-            public Icon(FieldInfo field, PauseMenuMap menu, string name, float size)
+            public Icon(NativeField field, PauseMenuMap menu, string name, float size)
             {
                 var prefab = field?.GetValue(menu) as Image;
                 Sprite = prefab == null ? null : prefab.sprite;

@@ -1,3 +1,4 @@
+using System.Linq;
 using System;
 using System.Reflection;
 using BepInEx.Configuration;
@@ -15,14 +16,14 @@ namespace AnomalithQuickSwitch
         private const string SpeedLabel = "Switch Speed";
 
         // Use the same native ON/OFF prefab and local parameters as the overlay settings.
-        private static readonly FieldInfo Prefab = typeof(OptionItemHolder).GetField("m_SelectPrefab", Private);
-        private static readonly FieldInfo SliderPrefab = typeof(OptionItemHolder).GetField("m_SliderPrefab", Private);
-        private static readonly FieldInfo SliderValueText = typeof(OptionItemSlider).GetField("m_ValueText", Private);
-        private static readonly FieldInfo Content = typeof(OptionItemHolder).GetField("m_OptionContentRoot", Private);
-        private static readonly FieldInfo Current = typeof(OptionItemHolder).GetField("m_CurrentOptionItem", Private);
-        private static readonly FieldInfo IsOpen = typeof(OptionItemHolder).GetField("m_IsOpen", Private);
-        private static readonly FieldInfo Parameter = typeof(OptionItemBase).GetField("m_OptionParam", Private);
-        private static readonly FieldInfo ItemName = typeof(OptionItemBase).GetField("m_ItemNameText", Private);
+        private static readonly NativeField Prefab = NativeField.Find(typeof(OptionItemHolder), "m_SelectPrefab", Private);
+        private static readonly NativeField SliderPrefab = NativeField.Find(typeof(OptionItemHolder), "m_SliderPrefab", Private);
+        private static readonly NativeField SliderValueText = NativeField.Find(typeof(OptionItemSlider), "m_ValueText", Private);
+        private static readonly NativeField Content = NativeField.Find(typeof(OptionItemHolder), "m_OptionContentRoot", Private);
+        private static readonly NativeField Current = NativeField.Find(typeof(OptionItemHolder), "m_CurrentOptionItem", Private);
+        private static readonly NativeField IsOpen = NativeField.Find(typeof(OptionItemHolder), "m_IsOpen", Private);
+        private static readonly NativeField Parameter = NativeField.Find(typeof(OptionItemBase), "m_OptionParam", Private);
+        private static readonly NativeField ItemName = NativeField.Find(typeof(OptionItemBase), "m_ItemNameText", Private);
 
         private readonly ConfigEntry<bool> enabled;
         private readonly ConfigEntry<int> speed;
@@ -49,8 +50,10 @@ namespace AnomalithQuickSwitch
 
         internal void Refresh()
         {
-            if (failed || DialogManager.Instance == null || !DialogManager.IsOpenDialog ||
-                !(DialogManager.GetTopDialog() is OptionMenu currentMenu) || !currentMenu.isActiveAndEnabled)
+            if (failed || DialogManager.Instance == null || !DialogManager.IsOpenDialog)
+                return;
+            var currentMenu = NativeUnity.Cast<OptionMenu>(DialogManager.GetTopDialog());
+            if (currentMenu == null || !currentMenu.isActiveAndEnabled)
                 return;
 
             try
@@ -109,13 +112,13 @@ namespace AnomalithQuickSwitch
         private bool Attach(OptionMenu currentMenu)
         {
             var holders = currentMenu.GetOptionHolderList();
-            holder = holders.Find(candidate =>
+            holder = NativeUnity.Items(holders).FirstOrDefault(candidate =>
                 candidate != null && candidate.m_HolderGroupType == OptionGroupType.OTHERS);
             if (holder == null || holder.GetOptionList().Count == 0)
                 return false;
 
             var prefab = Prefab?.GetValue(holder) as OptionItemSelect;
-            var audioHolder = holders.Find(candidate =>
+            var audioHolder = NativeUnity.Items(holders).FirstOrDefault(candidate =>
                 candidate != null && candidate.m_HolderGroupType == OptionGroupType.SOUND);
             var sliderPrefab = SliderPrefab?.GetValue(audioHolder ?? holder) as OptionItemSlider;
             var content = Content?.GetValue(holder) as RectTransform;
@@ -170,7 +173,7 @@ namespace AnomalithQuickSwitch
             Parameter.SetValue(row, parameter);
             foreach (var component in name.GetComponents<Behaviour>())
             {
-                if (component.GetType().Name == "nnLocalizeDataUGUI")
+                if (NativeUnity.IsLocalized(component))
                 {
                     component.enabled = false;
                     Object.Destroy(component);
@@ -199,9 +202,10 @@ namespace AnomalithQuickSwitch
                         if (list[i] != null)
                             list[i].ObjectNumber = i;
                     }
-                    if (ReferenceEquals(selected, item) || ReferenceEquals(selected, slider))
+                    if (NativeUnity.Cast<OptionItemBase>(selected) == item ||
+                        NativeUnity.Cast<OptionItemBase>(selected) == slider)
                     {
-                        var replacement = list.FindLast(row => row != null && row.gameObject.activeSelf);
+                        var replacement = NativeUnity.Items(list).LastOrDefault(row => row != null && row.gameObject.activeSelf);
                         Current.SetValue(holder, replacement);
                         if (replacement != null && (bool)IsOpen.GetValue(holder))
                         {

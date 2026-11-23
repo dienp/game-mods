@@ -1,4 +1,5 @@
 using System.Reflection;
+using Anomalith;
 using BepInEx;
 using BepInEx.Configuration;
 using TMPro;
@@ -7,14 +8,51 @@ using UnityEngine.UI;
 
 namespace AnomalithHudNumbers
 {
-    [BepInPlugin("labs.anomalith.hudnumbers", "ANOMALITH HUD Numbers", "1.0.2")]
+#if ANOMALITH_IL2CPP
+    [BepInPlugin("labs.anomalith.hudnumbers", "ANOMALITH HUD Numbers", "1.0.3")]
+#if DEBUG
+    public sealed class PluginLoader : Il2CppDebugHost<DevelopmentDriver, HudNumbersPlugin>
+    {
+    }
+
+    public sealed class DevelopmentDriver : UnityEngine.MonoBehaviour
+    {
+        public DevelopmentDriver(System.IntPtr pointer) : base(pointer)
+        {
+        }
+
+        private void Update() => Il2CppDebugSession.Current?.Update();
+        private void LateUpdate() => Il2CppDebugSession.Current?.LateUpdate();
+        private void OnGUI() => Il2CppDebugSession.Current?.Draw();
+        private void OnDestroy() => Il2CppDebugSession.Current?.Dispose();
+    }
+
+    public sealed class HudNumbersPlugin : Il2CppDebugFeature
+    {
+#else
+    public sealed class PluginLoader : Il2CppPluginHost<HudNumbersPlugin>
+    {
+    }
+
+    public sealed class HudNumbersPlugin : UnityEngine.MonoBehaviour
+    {
+        public HudNumbersPlugin(System.IntPtr pointer) : base(pointer)
+        {
+        }
+
+        private ConfigFile Config => Il2CppPluginContext.Config;
+        private BepInEx.Logging.ManualLogSource Logger => Il2CppPluginContext.Log;
+#endif
+#else
+    [BepInPlugin("labs.anomalith.hudnumbers", "ANOMALITH HUD Numbers", "1.0.3")]
     public sealed class HudNumbersPlugin : BaseUnityPlugin
     {
+#endif
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
-        private static readonly FieldInfo ManaGauge = typeof(UIManager).GetField("m_MpGauge", Private);
-        private static readonly FieldInfo MainGauge = typeof(HudGauge).GetField("m_MainGauge", Private);
+        private static readonly NativeField ManaGauge = NativeField.Find(typeof(UIManager), "m_MpGauge", Private);
+        private static readonly NativeField MainGauge = NativeField.Find(typeof(HudGauge), "m_MainGauge", Private);
         private ConfigEntry<bool> showNumbers;
-        private HudNumbersOption option;
+        private NativeToggleOption option;
         private UIManager currentHud;
         private Image healthBar;
         private Image manaBar;
@@ -23,12 +61,14 @@ namespace AnomalithHudNumbers
         private string healthValue;
         private string manaValue;
         private float nextRefresh;
-        private readonly Vector3[] barCorners = new Vector3[4];
+#if ANOMALITH_IL2CPP && DEBUG
+        private HudNumbersSmokeTest smokeTest;
+#endif
 
         private void Awake()
         {
             showNumbers = Config.Bind("General", "Enabled", true, "Show current and maximum HP and MP beside the HUD bars.");
-            option = new HudNumbersOption(showNumbers, Logger);
+            option = new NativeToggleOption(showNumbers, Logger, "HP/MP Numbers", "LABS_HUD_NUMBERS");
             if (ManaGauge == null || MainGauge == null)
             {
                 Logger.LogWarning("Could not find the native MP gauge in this game build.");
@@ -36,10 +76,16 @@ namespace AnomalithHudNumbers
                 return;
             }
             Logger.LogInfo("HUD Numbers loaded.");
+#if ANOMALITH_IL2CPP && DEBUG
+            smokeTest = HudNumbersSmokeTest.FromEnvironment(DebugDriver, Logger);
+#endif
         }
 
         private void LateUpdate()
         {
+#if ANOMALITH_IL2CPP && DEBUG
+            smokeTest?.CheckCaptureKey();
+#endif
             option?.Refresh();
             if (Time.unscaledTime < nextRefresh)
                 return;
@@ -55,6 +101,9 @@ namespace AnomalithHudNumbers
                 return;
             }
 
+#if ANOMALITH_IL2CPP && DEBUG
+            smokeTest?.ReportGameplay();
+#endif
             if (currentHud != hud || healthBar == null || manaBar == null || healthText == null || manaText == null)
             {
                 Clear();
@@ -88,6 +137,9 @@ namespace AnomalithHudNumbers
             healthText.color = healthBar.color;
             PositionText(healthText, healthBar);
             PositionText(manaText, manaBar);
+#if ANOMALITH_IL2CPP && DEBUG
+            smokeTest?.Observe(healthText, healthBar, manaText, manaBar);
+#endif
         }
 
         private static string FormatValue(string label, float remaining, float maximum, bool roundUp)
@@ -103,7 +155,7 @@ namespace AnomalithHudNumbers
 
         private static TextMeshProUGUI CreateText(string name, Transform parent, TextMeshProUGUI style)
         {
-            var label = new GameObject(name, typeof(RectTransform)).AddComponent<TextMeshProUGUI>();
+            var label = NativeUnity.CreateObject(name, typeof(RectTransform)).AddComponent<TextMeshProUGUI>();
             var rect = label.rectTransform;
             rect.SetParent(parent, false);
             label.gameObject.layer = parent.gameObject.layer;
@@ -131,10 +183,11 @@ namespace AnomalithHudNumbers
         {
             // The native gauge can mirror its image. Position in the HUD canvas
             // so the numbers remain upright on either side of that transform.
-            bar.rectTransform.GetWorldCorners(barCorners);
+            var barRect = bar.rectTransform;
+            var bounds = barRect.rect;
             Transform parent = text.transform.parent;
-            Vector3 first = parent.InverseTransformPoint(barCorners[0]);
-            Vector3 opposite = parent.InverseTransformPoint(barCorners[2]);
+            Vector3 first = parent.InverseTransformPoint(barRect.TransformPoint((Vector3)bounds.min));
+            Vector3 opposite = parent.InverseTransformPoint(barRect.TransformPoint((Vector3)bounds.max));
             text.rectTransform.localPosition = new Vector3(
                 Mathf.Min(first.x, opposite.x) - 32, (first.y + opposite.y) * 0.5f, 0);
             Color color = text.color;

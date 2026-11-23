@@ -21,3 +21,22 @@ state were restored, and the test probe was removed.
 Version 1.0.2 copies the live health bar color on every numeric HUD update.
 A temporary runtime probe confirmed identical HP text and bar RGB values
 of 0.255, 0.859, 0.800, with the MP text retaining its existing color.
+
+## IL2CPP smoke test
+
+Install the [Debug build](../../../README.md#hot-reload-during-development)
+of HUD Numbers and start the test with ANOMALITH closed. Run from the
+workspace root.
+
+```powershell
+.\anomalith\mods\hud-numbers\scripts\Test-HudNumbers.ps1 `
+    -AnomalithDir 'E:/Games/ANOMALITH.Build.26773190' `
+    -ScreenshotDirectory 'anomalith/bin/hud-smoke-test'
+```
+
+Load a save and return to gameplay with HP/MP Numbers ON. The test waits
+for both labels to be active, on screen, and aligned left of their bars.
+It records the displayed values in the BepInEx log and saves `hud-numbers.png`
+in a new subdirectory for the run. Press F6 during the same session to save
+additional screenshots there. The script reports a failure if the game exits
+early or the check times out. It leaves the game running after checking the HUD.

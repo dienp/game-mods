@@ -1,13 +1,13 @@
 # Runtime verification
 
-1. Hot-load the Release DLL through ScriptEngine and check the BepInEx log
-   for the tracker startup message.
+1. Follow the [Debug hot-reload setup](../../../README.md#hot-reload-during-development)
+   for the installed runtime and check the BepInEx log for the startup message.
 2. Highlight a revealed Workshop recipe with material requirements and press
    F7. Compare the pin confirmation with the selected recipe.
 3. Enter a Dive. Check the displayed material shortages against the Workshop
    counts. F8 should hide and show the checklist.
-4. Reload with ScriptEngine while the game is running. Confirm the same pin
-   is restored and displayed with current inventory counts.
+4. Rebuild while the game is running. Confirm the same pin is restored and
+   displayed with current inventory counts after the reload.
 
 ## Local result
 

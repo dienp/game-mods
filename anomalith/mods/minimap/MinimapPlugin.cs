@@ -13,17 +13,54 @@ using UnityEngine.ResourceManagement.AsyncOperations;
 
 namespace AnomalithMinimap
 {
-    [BepInPlugin("labs.anomalith.minimap", "ANOMALITH Minimap", "1.4.0")]
+#if ANOMALITH_IL2CPP
+    [BepInPlugin("labs.anomalith.minimap", "ANOMALITH Minimap", "1.4.1")]
+#if DEBUG
+    public sealed class PluginLoader : Il2CppDebugHost<DevelopmentDriver, MinimapPlugin>
+    {
+    }
+
+    public sealed class DevelopmentDriver : UnityEngine.MonoBehaviour
+    {
+        public DevelopmentDriver(System.IntPtr pointer) : base(pointer)
+        {
+        }
+
+        private void Update() => Il2CppDebugSession.Current?.Update();
+        private void LateUpdate() => Il2CppDebugSession.Current?.LateUpdate();
+        private void OnGUI() => Il2CppDebugSession.Current?.Draw();
+        private void OnDestroy() => Il2CppDebugSession.Current?.Dispose();
+    }
+
+    public sealed class MinimapPlugin : Il2CppDebugFeature
+    {
+#else
+    public sealed class PluginLoader : Il2CppPluginHost<MinimapPlugin>
+    {
+    }
+
+    public sealed class MinimapPlugin : UnityEngine.MonoBehaviour
+    {
+        public MinimapPlugin(System.IntPtr pointer) : base(pointer)
+        {
+        }
+
+        private ConfigFile Config => Il2CppPluginContext.Config;
+        private BepInEx.Logging.ManualLogSource Logger => Il2CppPluginContext.Log;
+#endif
+#else
+    [BepInPlugin("labs.anomalith.minimap", "ANOMALITH Minimap", "1.4.1")]
     public sealed class MinimapPlugin : BaseUnityPlugin
     {
+#endif
         internal const int MinimumSize = 5;
         internal const int DefaultSize = 10;
         internal const int MaximumSize = 20;
         private const BindingFlags SideMessageFields = BindingFlags.Instance | BindingFlags.NonPublic;
-        private static readonly FieldInfo MessageWindow = typeof(SideMessage).GetField("m_MessageWindowAnim", SideMessageFields);
-        private static readonly FieldInfo MessageStart = typeof(SideMessage).GetField("m_StartAnimState", SideMessageFields);
-        private static readonly FieldInfo MessageEnd = typeof(SideMessage).GetField("m_EndAnimState", SideMessageFields);
-        private static readonly FieldInfo MessageStep = typeof(SideMessage).GetField("m_Step", SideMessageFields);
+        private static readonly NativeField MessageWindow = NativeField.Find(typeof(SideMessage), "m_MessageWindowAnim", SideMessageFields);
+        private static readonly NativeField MessageStart = NativeField.Find(typeof(SideMessage), "m_StartAnimState", SideMessageFields);
+        private static readonly NativeField MessageEnd = NativeField.Find(typeof(SideMessage), "m_EndAnimState", SideMessageFields);
+        private static readonly NativeField MessageStep = NativeField.Find(typeof(SideMessage), "m_Step", SideMessageFields);
 
         private PauseMenuMap nativeMenu;
         private PauseMenu nativePause;
@@ -108,7 +145,7 @@ namespace AnomalithMinimap
             }
 
             Vector3 worldPosition = position.position;
-            int floor = NativeMap.FindFloor(mapManager.m_GetFloorPoint, worldPosition.y);
+            int floor = NativeMap.FindFloor(NativeUnity.Items(mapManager.m_GetFloorPoint), worldPosition.y);
             if (map?.m_ImageIDList == null || floor >= map.m_ImageIDList.Count ||
                 !TrySetFloor(mapManager, floor))
             {
@@ -213,7 +250,7 @@ namespace AnomalithMinimap
             if (nativePause == pause && nativeMenu != null && view != null)
                 return true;
 
-            var pauseMap = pause.GetTabUI(PauseMenu.TabType.Map) as PauseMenuMap;
+            var pauseMap = NativeUnity.Cast<PauseMenuMap>(pause.GetTabUI(PauseMenu.TabType.Map));
             if (pauseMap == null)
                 return false;
             var assets = NativeMap.TryRead(pauseMap);
@@ -244,7 +281,7 @@ namespace AnomalithMinimap
             if (failedTexture)
                 return false;
 
-            if (!texture.IsValid())
+            if (!HasTexture())
             {
                 if (Time.unscaledTime < nextLookup)
                     return false;
@@ -292,7 +329,7 @@ namespace AnomalithMinimap
         private void ClearFloor()
         {
             view?.ClearFloor();
-            if (texture.IsValid())
+            if (HasTexture())
                 Addressables.Release(texture);
             texture = default;
             requestedFloor = -1;
@@ -301,6 +338,15 @@ namespace AnomalithMinimap
             nextLookup = 0;
             nextPointRefresh = 0;
             points.Clear();
+        }
+
+        private bool HasTexture()
+        {
+#if ANOMALITH_IL2CPP
+            return texture != null && texture.IsValid();
+#else
+            return texture.IsValid();
+#endif
         }
 
         private void OnDestroy()

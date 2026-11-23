@@ -1,18 +1,56 @@
 using System;
 using System.Reflection;
+using Anomalith;
 using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
 
 namespace AnomalithAutoReload
 {
-    [BepInPlugin(PluginId, "ANOMALITH Auto Reload", "1.1.0")]
+#if ANOMALITH_IL2CPP
+    [BepInPlugin("labs.anomalith.autoreload", "ANOMALITH Auto Reload", "1.1.1")]
+#if DEBUG
+    public sealed class PluginLoader : Il2CppDebugHost<DevelopmentDriver, AutoReloadPlugin>
+    {
+    }
+
+    public sealed class DevelopmentDriver : UnityEngine.MonoBehaviour
+    {
+        public DevelopmentDriver(System.IntPtr pointer) : base(pointer)
+        {
+        }
+
+        private void Update() => Il2CppDebugSession.Current?.Update();
+        private void LateUpdate() => Il2CppDebugSession.Current?.LateUpdate();
+        private void OnGUI() => Il2CppDebugSession.Current?.Draw();
+        private void OnDestroy() => Il2CppDebugSession.Current?.Dispose();
+    }
+
+    public sealed class AutoReloadPlugin : Il2CppDebugFeature
+    {
+#else
+    public sealed class PluginLoader : Il2CppPluginHost<AutoReloadPlugin>
+    {
+    }
+
+    public sealed class AutoReloadPlugin : UnityEngine.MonoBehaviour
+    {
+        public AutoReloadPlugin(System.IntPtr pointer) : base(pointer)
+        {
+        }
+
+        private ConfigFile Config => Il2CppPluginContext.Config;
+        private BepInEx.Logging.ManualLogSource Logger => Il2CppPluginContext.Log;
+#endif
+#else
+    [BepInPlugin(PluginId, "ANOMALITH Auto Reload", "1.1.1")]
     public sealed class AutoReloadPlugin : BaseUnityPlugin
     {
+#endif
         private const string PluginId = "labs.anomalith.autoreload";
         private static ConfigEntry<bool> autoReload;
         private Harmony harmony;
-        private ReloadOption option;
+        private NativeToggleOption option;
 
         private void Awake()
         {
@@ -33,7 +71,7 @@ namespace AnomalithAutoReload
                 var postfix = new HarmonyMethod(typeof(AutoReloadPlugin).GetMethod(nameof(AllowEmptyReload),
                     BindingFlags.Static | BindingFlags.NonPublic));
                 harmony.Patch(condition, postfix: postfix);
-                option = new ReloadOption(autoReload, Logger);
+                option = new NativeToggleOption(autoReload, Logger, "Auto Reload", "LABS_AUTO_RELOAD");
                 Logger.LogInfo($"Auto Reload loaded. Enabled: {autoReload.Value}.");
             }
             catch (Exception error)
