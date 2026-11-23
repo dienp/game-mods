@@ -1,0 +1,91 @@
+# Runtime verification
+
+## Live location and visibility
+
+- ScriptEngine loaded the Release DLL in the existing ANOMALITH process.
+  The minimap used the Base floor image `map_000_kyoten` and the native
+  `Map_PlayerIcon`. A 1920×1080 screenshot confirmed that the panel sits
+  above the lower-right HUD. None of its graphics received input.
+- The map offset changed as the player walked and the arrow turned with the
+  character. The HUD position and native pause-map camera projection
+  matched to six decimal places in viewport coordinates at the tested
+  Base position.
+- The live view hid during the pause map, a dialog and a scripted scene,
+  and returned during exploration. The first live test used the Base
+  floor. Floor selection elsewhere uses the game's own height thresholds.
+
+## Larger map and native landmarks
+
+- ScriptEngine loaded version 1.1.0 in the same process. The Base screenshot
+  at 1920×1080 showed the 384 × 282 panel above the status bars, with a
+  larger floor plan, the native player arrow, the main objective diamond,
+  and native fast-travel dots.
+- The main objective remained visible where it shared a location with a
+  fast-travel point. The overlay had no input-receiving graphics.
+- The live marker layout was checked in the Base. Other landmark types
+  use the pause map's corresponding sprites, quest triggers and map objects.
+
+## Health bar alignment, transparency and performance
+
+- The updated map was visually checked in the Base at 1920×1080. It was
+  about 261 pixels square, with both horizontal edges aligned to the full
+  health bar. Scene details remained visible through the background.
+  The floor image uses a 35% higher scale than version 1.1.0.
+- In stable on/off/on runs, median minimap update time was 51–52 µs in
+  1.1.0 at the Base and 18–20 µs in 1.2.0 in the Sewers. These timings
+  cover the minimap callback only. Whole-game frame times varied across
+  the runs and with the overlay off.
+- The older toggle cleared and rebound the native image after each off/on
+  cycle in `map_301_subway`. In 1.2.1, two off/on cycles on
+  `map_302_subway` kept the same Floor 4 texture and showed or hid the
+  canvas as requested. The saved preference matched each resting state.
+  The re-enable handler measured 22–49 µs compared with 491–672 µs before
+  the change. These short runs used different subway areas.
+
+## Bottom-left placement
+
+In the live Rail Yard Dive at 1920×1080, the hot-reloaded minimap was
+approximately 261 pixels square, inset 27 pixels from the left and bottom
+edges. The health bar on the opposite side was the same width.
+
+## Other Settings
+
+Version 1.3.0 hot-loaded in the Rail Yard with the upgrade tracker loaded.
+Other Settings displayed Minimap and Pinned Item below Reset to Default.
+Both used the game's ON/OFF labels and directional arrows. Switching both
+off saved their settings. A second hot reload while Other Settings was
+open restored both OFF rows without duplicates.
+## BepInEx startup install
+
+With the Release DLL in `BepInEx/plugins` and ScriptEngine outside the load
+path, BepInEx 5.4.23.6 loaded Minimap 1.3.0 at startup. After loading the save,
+the Base minimap rendered with the player marker and points of interest.
+
+## In-game conversations
+
+In a live Dive, a temporary test activated the game's side
+conversation panel. Minimap 1.3.1 hid while the panel was active and returned
+when it closed.
+
+## Minimum minimap size
+
+A temporary Unity test probe passed synthetic health-bar layouts to the
+installed view's `MatchHealthBarWidth` method. Version 1.3.2 accepted an
+82-pixel measurement and reduced the panel to 82 × 82. Version 1.3.3 kept
+the 261-reference-pixel default or the last usable width through zero,
+tiny, and partially expanded measurements. It accepted normal widths and
+recovered when the layout returned. Checks also covered low health fill,
+canvas scale factors of 1, 2, and 1072/1080, and a return to scale 1.
+These tests changed canvas scale factors without changing the display's
+resolution. The original intermittent gameplay trigger remains unconfirmed.
+The probe was removed after testing.
+
+## Minimap Size slider
+
+Version 1.4.0 displayed a native Minimap Size slider beside Switch Speed
+in Other Settings at 1920 × 1080. A temporary probe changed its row value
+to 0.5× and 2.0× and verified that the configuration and panel scale both
+followed. The base panel remained 261 reference pixels. A 1.2× choice
+saved while the minimap was off survived a ScriptEngine reload. Reloading
+with Options open produced exactly one size slider. The original 1.0×
+size and enabled preference were restored after testing.
