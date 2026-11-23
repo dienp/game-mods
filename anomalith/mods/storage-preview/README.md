@@ -8,16 +8,17 @@ It defaults to ON and remembers your choice.
 ## Install and build
 
 For the Windows x64 Unity Mono build with BepInEx 5.4.23.6, place
-`AnomalithStoragePreview.dll` in `BepInEx/plugins`. A local ScriptEngine
-development setup can load the same DLL from `BepInEx/scripts`.
+`AnomalithStoragePreview.dll` in `BepInEx/plugins`. See the
+[ScriptEngine development setup](../../README.md#hot-reload-during-development)
+for hot reload.
 
 Building requires a local game install, BepInEx, and the .NET 8 SDK.
-The plugin targets `netstandard2.1` and has no additional packages or
-environment variables.
+The plugin targets `netstandard2.1`. Run from the workspace root.
 
 ```powershell
-dotnet build apps/anomalith-storage-preview/AnomalithStoragePreview.csproj -c Release -p:AnomalithDir=E:/Games/ANOMALITH
-npm run spec -- apps/anomalith-storage-preview validate --all --strict
+$env:AnomalithDir = 'E:/Games/ANOMALITH'
+npx nx build anomalith-storage-preview
+npx nx run anomalith-storage-preview:spec
 ```
 
 See [verification](docs/verification.md) for gameplay checks.

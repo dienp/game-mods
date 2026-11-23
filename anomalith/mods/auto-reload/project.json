@@ -1,0 +1,32 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "anomalith-auto-reload",
+  "projectType": "library",
+  "sourceRoot": "anomalith/mods/auto-reload",
+  "tags": ["game:anomalith", "type:mod"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{projectRoot}/bin/Release/netstandard2.1"],
+      "options": {
+        "cwd": "anomalith/mods/auto-reload",
+        "command": "dotnet build -c Release --nologo"
+      }
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "continuous": true,
+      "options": {
+        "cwd": "anomalith/mods/auto-reload",
+        "command": "dotnet watch --no-hot-reload build -c Debug --nologo /p:DeployToScriptEngine=true"
+      }
+    },
+    "spec": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node anomalith/scripts/spec.mjs mods/auto-reload validate --all --strict"
+      }
+    }
+  }
+}

@@ -11,16 +11,22 @@ BepInEx mods for the Windows x64 Unity Mono build of [ANOMALITH on Steam](https:
 
 If upgrading from v1.0.1 or v1.0.2, remove the old Minimap and Upgrade Tracker DLLs from `BepInEx/scripts` to avoid loading duplicates.
 
+## Compatibility
+
+Future releases will list the tested ANOMALITH Steam Build ID alongside the
+mod suite version and the checks performed. Look for the same compatibility
+note here, in the release notes, and on [Nexus Mods](https://www.nexusmods.com/anomalith/mods/10).
+
 ## Mods
 
 | Mod | What it does |
 | --- | --- |
-| [Upgrade Tracker](apps/anomalith-upgrade-tracker/README.md) | Pins Workshop recipes, highlights material sources on Deploy, and shows which weapons fit the highlighted Workshop attachment. The pinned checklist hides during OV gain notifications. |
-| [Minimap](apps/anomalith-minimap/README.md) | Shows the native floor plan, player position, and points of interest during gameplay. Hides during NPC and radio conversations. Other Settings includes a Minimap Size slider. |
-| [HUD Numbers](apps/anomalith-hud-numbers/README.md) | Shows current and maximum HP and MP beside the HUD bars. Toggle HP/MP Numbers in Other Settings. |
-| [Auto Reload](apps/anomalith-auto-reload/README.md) | Starts a normal reload when the equipped firearm runs empty and spare ammo is available. Toggle it in **Options → Other Settings**. |
-| [Quick Weapon Switch](apps/anomalith-quick-switch/README.md) | Speeds up weapon swaps and cycles assigned weapons on the first scroll notch. Use **Options → Other Settings** for the ON/OFF toggle and **Switch Speed** slider (1.0×–3.0×, default 1.5×). |
-| [Inventory Storage Preview](apps/anomalith-storage-preview/README.md) | Shows the Storage icon and Base storage count when hovering over an item in Inventory. Toggle it in **Options → Other Settings**. |
+| [Upgrade Tracker](mods/upgrade-tracker/README.md) | Pins Workshop recipes, highlights material sources on Deploy, and shows which weapons fit the highlighted Workshop attachment. The pinned checklist hides during OV gain notifications. |
+| [Minimap](mods/minimap/README.md) | Shows the native floor plan, player position, and points of interest during gameplay. Hides during NPC and radio conversations. Other Settings includes a Minimap Size slider. |
+| [HUD Numbers](mods/hud-numbers/README.md) | Shows current and maximum HP and MP beside the HUD bars. Toggle HP/MP Numbers in Other Settings. |
+| [Auto Reload](mods/auto-reload/README.md) | Starts a normal reload when the equipped firearm runs empty and spare ammo is available. Toggle it in **Options → Other Settings**. |
+| [Quick Weapon Switch](mods/quick-switch/README.md) | Speeds up weapon swaps and cycles assigned weapons on the first scroll notch. Use **Options → Other Settings** for the ON/OFF toggle and **Switch Speed** slider (1.0×–3.0×, default 1.5×). |
+| [Inventory Storage Preview](mods/storage-preview/README.md) | Shows the Storage icon and Base storage count when hovering over an item in Inventory. Toggle it in **Options → Other Settings**. |
 
 ## Screenshots
 
@@ -46,9 +52,23 @@ If upgrading from v1.0.1 or v1.0.2, remove the old Minimap and Upgrade Tracker D
 
 ## Build from source
 
-Use a local copy of ANOMALITH, the .NET 8 SDK, and BepInEx 5.
-Each mod README has build commands. The Upgrade Tracker also includes
-instructions to regenerate its material source index from your game files.
+Install the workspace dependencies with `npm ci` at the `game-mods` root. Set
+`AnomalithDir` to a local ANOMALITH installation with BepInEx 5.
 
-Run `npm ci` at the repository root to install the pinned OpenSpec CLI for the
-validation commands in each mod README.
+```powershell
+$env:AnomalithDir = 'E:/Games/ANOMALITH'
+npx nx run-many -t build --projects=tag:game:anomalith
+npx nx run-many -t spec --projects=tag:game:anomalith
+```
+
+Build one mod with `npx nx build anomalith-minimap`. Release DLLs are under
+`anomalith/mods/<mod>/bin/Release/netstandard2.1/` and go in
+`BepInEx/plugins`. Use `npm run spec -- mods/minimap <args>` to run other
+OpenSpec commands in that mod.
+
+### Hot reload during development
+
+Set up ScriptEngine 11.2 in the local BepInEx installation. Remove any installed
+release copy of the mod you are developing so ScriptEngine loads a single copy.
+Then run `npx nx run anomalith-minimap:dev`. The watcher rebuilds on source
+changes and copies the Debug DLL to `BepInEx/scripts` for ScriptEngine to reload.

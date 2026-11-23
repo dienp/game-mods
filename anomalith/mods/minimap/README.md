@@ -28,14 +28,13 @@ See [runtime verification](docs/verification.md).
 
 Requires the .NET 8 SDK, a local Windows x64 ANOMALITH installation, BepInEx
 5.4.23.6. The project targets `netstandard2.1` and
-references assemblies from the game and loader. It has no NuGet dependencies,
-environment variables or external services.
+references assemblies from the game and loader. Run from the workspace root.
 
 ```powershell
-$game = 'E:/Games/ANOMALITH'
-dotnet build apps/anomalith-minimap/AnomalithMinimap.csproj -c Release -p:AnomalithDir=$game
-Copy-Item -LiteralPath 'apps/anomalith-minimap/bin/Release/netstandard2.1/AnomalithMinimap.dll' -Destination (Join-Path $game 'BepInEx/plugins')
-npm run spec -- apps/anomalith-minimap validate --all --strict
+$env:AnomalithDir = 'E:/Games/ANOMALITH'
+npx nx build anomalith-minimap
+Copy-Item -LiteralPath 'anomalith/mods/minimap/bin/Release/netstandard2.1/AnomalithMinimap.dll' -Destination (Join-Path $env:AnomalithDir 'BepInEx/plugins')
+npx nx run anomalith-minimap:spec
 ```
 
 BepInEx loads the mod when the game starts. Close the game before replacing

@@ -29,5 +29,5 @@ game installation, then rebuild the tracker. The generator reads the game files
 and writes the item, area, and enemy name keys to `Data/EnemySources.tsv`.
 
 ```powershell
-uv run --no-project --with UnityPy==1.25.4 --with TypeTreeGeneratorAPI==0.0.10 python apps/anomalith-upgrade-tracker/tools/index_enemy_sources.py E:/Games/ANOMALITH
+uv run --no-project --with UnityPy==1.25.4 --with TypeTreeGeneratorAPI==0.0.10 python anomalith/mods/upgrade-tracker/tools/index_enemy_sources.py E:/Games/ANOMALITH
 ```

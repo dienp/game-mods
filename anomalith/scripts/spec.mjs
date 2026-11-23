@@ -12,27 +12,27 @@ function fail(message) {
 }
 
 if (!target || target === '--help' || target === '-h') {
-  console.log('Usage: npm run spec -- <apps/name|packages/name> <openspec arguments>');
+  console.log('Usage: npm run spec -- mods/<name> <openspec arguments>');
   process.exit(target ? 0 : 1);
 }
 
-const parts = target.split('/');
-if (parts.length !== 2 || !['apps', 'packages'].includes(parts[0]) ||
-    !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(parts[1])) {
-  fail('Target must be apps/<name> or packages/<name>, using lowercase kebab-case.');
+const mod = /^(?:mods\/|apps\/anomalith-)([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(target)?.[1];
+if (!mod) {
+  fail('Target must be mods/<name>, using lowercase kebab-case.');
 }
 
+const modPath = ['mods', mod].join(sep);
 let cwd;
 try {
-  cwd = realpathSync(resolve(root, target));
+  cwd = realpathSync(resolve(root, modPath));
 } catch {
-  fail(`Create ${target}/ before running OpenSpec there.`);
+  fail(`Create ${modPath}/ before running OpenSpec there.`);
 }
-if (relative(root, cwd) !== parts.join(sep)) {
+if (relative(root, cwd) !== modPath) {
   fail('Target must resolve to its own directory inside this repository.');
 }
 
-const cli = resolve(root, 'node_modules/@fission-ai/openspec/bin/openspec.js');
+const cli = resolve(root, '../node_modules/@fission-ai/openspec/bin/openspec.js');
 const result = spawnSync(process.execPath, [cli, ...args], {
   cwd,
   stdio: 'inherit',

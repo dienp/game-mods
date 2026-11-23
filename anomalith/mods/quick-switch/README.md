@@ -11,19 +11,20 @@ Scrolling in either direction skips empty shortcuts and wraps around.
 ## Install
 
 For the Windows x64 Unity Mono build with BepInEx 5.4.23.6, place
-`AnomalithQuickSwitch.dll` in `BepInEx/plugins`. For local ScriptEngine
-development, place it in `BepInEx/scripts` and replace the script DLL
-when rebuilding. Use a single copy of the DLL.
+`AnomalithQuickSwitch.dll` in `BepInEx/plugins`. See the
+[ScriptEngine development setup](../../README.md#hot-reload-during-development)
+for hot reload.
 
 ## Build and verify
 
 Requires a local ANOMALITH installation with BepInEx and the .NET 8 SDK.
 The plugin targets `netstandard2.1` and uses Harmony from BepInEx.
-It has no additional packages or environment variables.
+Run from the workspace root.
 
 ```powershell
-dotnet build apps/anomalith-quick-switch/AnomalithQuickSwitch.csproj -c Release -p:AnomalithDir=E:/Games/ANOMALITH
-npm run spec -- apps/anomalith-quick-switch validate --all --strict
+$env:AnomalithDir = 'E:/Games/ANOMALITH'
+npx nx build anomalith-quick-switch
+npx nx run anomalith-quick-switch:spec
 ```
 
 See [verification](docs/verification.md) for the live test.

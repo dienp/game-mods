@@ -60,16 +60,15 @@ Controls and the pin are stored in
 
 Requires the .NET 8 SDK, ANOMALITH for Windows x64, and BepInEx 5.4.23.6.
 The project targets `netstandard2.1` and builds against
-the local game and BepInEx assemblies. It has no NuGet dependencies,
-environment variables, external services, or local package dependencies.
+the local game and BepInEx assemblies.
 
 From the repository root in PowerShell:
 
 ```powershell
-$game = 'E:/Games/ANOMALITH'
-dotnet build apps/anomalith-upgrade-tracker/AnomalithUpgradeTracker.csproj -c Release -p:AnomalithDir=$game
-Copy-Item -LiteralPath 'apps/anomalith-upgrade-tracker/bin/Release/netstandard2.1/AnomalithUpgradeTracker.dll' `
-    -Destination (Join-Path $game 'BepInEx/plugins')
+$env:AnomalithDir = 'E:/Games/ANOMALITH'
+npx nx build anomalith-upgrade-tracker
+Copy-Item -LiteralPath 'anomalith/mods/upgrade-tracker/bin/Release/netstandard2.1/AnomalithUpgradeTracker.dll' `
+    -Destination (Join-Path $env:AnomalithDir 'BepInEx/plugins')
 ```
 
 BepInEx loads the mod when the game starts. Close the game before replacing
@@ -81,5 +80,5 @@ See [runtime verification](docs/verification.md) for the local test and
 reproduction steps.
 
 ```powershell
-npm run spec -- apps/anomalith-upgrade-tracker validate --all --strict
+npx nx run anomalith-upgrade-tracker:spec
 ```

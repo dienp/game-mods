@@ -1,19 +1,16 @@
 # game-mods
 
-An Nx monorepo with one root folder per game and one library per mod.
+An Nx monorepo for game mods.
 
-- [Gunfire Reborn](gunfire-reborn/README.md)
-  - [Mods Core](gunfire-reborn/mods/core/README.md)
-  - [Steady Third Person](gunfire-reborn/mods/steady-third-person/README.md)
+- [ANOMALITH mods and build setup](anomalith/README.md)
+- [Gunfire Reborn mods and build setup](gunfire-reborn/README.md)
 
-Install Node.js 24 and the .NET 8 SDK. The full build also uses the local game interop assemblies described in [Mods Core](gunfire-reborn/mods/core/README.md). Run these commands from the repository root.
+Install Node.js 24 and the .NET 8 SDK. Follow the game's setup before building so .NET can find its local assemblies. Run Nx from the repository root.
 
 ```powershell
 npm ci
 npm run projects
-npm run build
+npx nx build anomalith-minimap
 ```
 
-Build a single library with `npx nx build gunfire-reborn-steady-third-person`.
-
-To add a mod, put its source and Nx `project.json` under `<game>/mods/<mod>/`. Follow the [workspace rules](AGENTS.md) before implementing mod changes.
+Run `npm run build` to build every project with a build target. See [AGENTS.md](AGENTS.md) for workspace conventions.

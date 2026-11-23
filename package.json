@@ -3,9 +3,11 @@
   "private": true,
   "scripts": {
     "build": "nx run-many --target=build",
-    "projects": "nx show projects"
+    "projects": "nx show projects",
+    "spec": "node anomalith/scripts/spec.mjs"
   },
   "devDependencies": {
+    "@fission-ai/openspec": "1.15.0",
     "nx": "24.0.6"
   },
   "overrides": {

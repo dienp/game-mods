@@ -1,0 +1,9 @@
+<Project>
+  <Target Name="DeployAnomalithDebugPlugin" AfterTargets="Build"
+          Condition="'$(Configuration)' == 'Debug' And '$(DeployToScriptEngine)' == 'true'">
+    <PropertyGroup>
+      <AnomalithScriptsDir Condition="'$(AnomalithScriptsDir)' == ''">$(AnomalithDir)/BepInEx/scripts</AnomalithScriptsDir>
+    </PropertyGroup>
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(AnomalithScriptsDir)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

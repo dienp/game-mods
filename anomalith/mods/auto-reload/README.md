@@ -14,12 +14,13 @@ it ON or OFF. The preference is saved in
 ## Build and verify
 
 Requires the .NET 8 SDK and a local ANOMALITH installation with BepInEx. The
-plugin targets `netstandard2.1` and uses Harmony from BepInEx. It has no NuGet
-dependencies or environment variables.
+plugin targets `netstandard2.1` and uses Harmony from BepInEx. Run from the
+workspace root.
 
 ```powershell
-dotnet build apps/anomalith-auto-reload/AnomalithAutoReload.csproj -c Release -p:AnomalithDir=E:/Games/ANOMALITH
-npm run spec -- apps/anomalith-auto-reload validate --all --strict
+$env:AnomalithDir = 'E:/Games/ANOMALITH'
+npx nx build anomalith-auto-reload
+npx nx run anomalith-auto-reload:spec
 ```
 
 See [verification](docs/verification.md) for the gameplay check.
