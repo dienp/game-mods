@@ -4,7 +4,7 @@
     <AnomalithMod>true</AnomalithMod>
     <LangVersion>8.0</LangVersion>
     <AssemblyName>AnomalithQuickSwitch</AssemblyName>
-    <Version>1.0.2</Version>
+    <Version>1.0.3</Version>
     <DebugType>embedded</DebugType>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>

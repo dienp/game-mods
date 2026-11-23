@@ -29,7 +29,7 @@ BepInEx 6 `BasePlugin` entry point.
 | Auto Reload | Native patch installed. Empty-magazine reload still needs a shooting-range check. |
 | HUD Numbers | Other Settings toggle appeared. After the placement fix, the automated check passed with `HP 272 / 272` and `MP 205 / 205`. |
 | Minimap | Native maps rendered in the Base and at Front Entrance. Floor changes and the size slider still need a gameplay check. |
-| Quick Weapon Switch | Native patches installed. First-notch switching and swap speed still need a shooting-range check. |
+| Quick Weapon Switch | The v1.0.8 wheel appeared on the first notch. The [v1.0.9 fix](../mods/quick-switch/docs/verification.md#il2cpp-build-26773190) passed first-notch switching in both directions and restored the stock wheel with the toggle OFF. Swap speed still needs a shooting-range check. |
 | Inventory Storage Preview | Sedative (Medium) showed `x 007` in its inventory tooltip. |
 | Upgrade Tracker | The user confirmed that recipe pinning and the compatible weapons list worked after the fix. The pinned checklist logged its ready-to-build status in gameplay. |
 
@@ -87,3 +87,11 @@ Windows logged a `UnityPlayer.dll` access violation (`0xc0000005`) in an
 earlier combined run and again on a requested shutdown. The cause is
 unresolved. The combined run reached the Base before that shutdown, and
 the next launch initialized all six Debug plugins.
+
+## v1.0.9 follow-up
+
+The suite updates Quick Weapon Switch from 1.0.2 to 1.0.3. The other five
+plugin versions are unchanged. First-notch switching and the OFF behavior
+were verified in the running Debug session. The final Release package was
+checked for versions and file integrity. A fresh launch from that package
+was not part of this check.

@@ -13,6 +13,20 @@ weapon while the wheel stayed closed. The OFF branch calls the original
 shortcut lookup. Reopening the stock wheel with the final build was checked
 in code.
 
+## IL2CPP build 26773190
+
+The v1.0.8 plugin replaced the lookup result after the native lookup had
+already opened the weapon wheel. The fix supplies the next weapon before
+that lookup runs and lets the game finish the normal swap.
+
+The fixed Debug DLL hot-reloaded at Front Entrance with BepInEx 6.0.0-be.793.
+With shortcuts 1 and 4 assigned and the intervening slots empty, a single
+notch switched from Grenade to Lightweight Assault Rifle and a notch in the
+opposite direction switched back. The wheel stayed closed both times. Reloading
+with the saved toggle OFF restored the stock wheel on the first notch. After
+restoring ON and reloading again, the next notch switched directly. The saved
+1.5× multiplier was retained. Swap animation timing was not measured in this run.
+
 ## Repeat the checks
 
 In the shooting range, switch between the same two loaded guns while holding

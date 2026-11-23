@@ -4,20 +4,20 @@ BepInEx mods for the Windows x64 builds of [ANOMALITH on Steam](https://store.st
 
 ## Compatibility
 
-ANOMALITH Mods v1.0.8 targets Windows x64 Unity IL2CPP. Testing used
-BepInEx 6.0.0-be.793 on the supplied copy of Steam build `26773190`, as
-confirmed by the tester. All six plugins passed startup checks. Live checks
-covered HUD numbers, Minimap, Workshop pinning and attachment compatibility,
-and the inventory storage tooltip. Auto Reload and Quick Weapon Switch
+ANOMALITH Mods v1.0.9 targets Windows x64 Unity IL2CPP. Testing used
+BepInEx 6.0.0-be.793 on Steam build `26773190`. The Quick Weapon Switch
+1.0.3 fix was verified in a hot-reloaded Debug build. One scroll notch
+switched weapons in either direction with the wheel closed. Turning the
+mod off restored the stock wheel. Swap-speed timing and Auto Reload
 gameplay checks are pending. See the [compatibility test record](docs/compatibility-26773190.md).
 
-## Quick install for v1.0.8 on IL2CPP
+## Quick install for v1.0.9 on IL2CPP
 
 1. Find `Anomalith.exe` in **Steam → Manage → Browse local files**.
 2. Install [BepInEx 6 IL2CPP for Windows x64](https://docs.bepinex.dev/master/articles/user_guide/installation/unity_il2cpp.html)
    in that folder. Use a clean loader installation if upgrading from BepInEx 5.
    Launch the game once with no plugins and close it after the title screen.
-3. Extract `anomalith-mods-v1.0.8-il2cpp.zip` into the folder containing
+3. Extract `anomalith-mods-v1.0.9-il2cpp.zip` into the folder containing
    `Anomalith.exe`. For an individual install, copy its DLL into `BepInEx/plugins`.
    Remove older copies of the ANOMALITH mods from `BepInEx/plugins` and `BepInEx/scripts`.
 4. Launch the game and check **Options → Other Settings** for mod controls.

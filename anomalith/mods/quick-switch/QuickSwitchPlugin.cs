@@ -11,7 +11,7 @@ using HarmonyLib;
 namespace AnomalithQuickSwitch
 {
 #if ANOMALITH_IL2CPP
-    [BepInPlugin("labs.anomalith.quickswitch", "ANOMALITH Quick Weapon Switch", "1.0.2")]
+    [BepInPlugin("labs.anomalith.quickswitch", "ANOMALITH Quick Weapon Switch", "1.0.3")]
 #if DEBUG
     public sealed class PluginLoader : Il2CppDebugHost<DevelopmentDriver, QuickSwitchPlugin>
     {
@@ -46,7 +46,7 @@ namespace AnomalithQuickSwitch
         private BepInEx.Logging.ManualLogSource Logger => Il2CppPluginContext.Log;
 #endif
 #else
-    [BepInPlugin(PluginId, "ANOMALITH Quick Weapon Switch", "1.0.2")]
+    [BepInPlugin(PluginId, "ANOMALITH Quick Weapon Switch", "1.0.3")]
     public sealed class QuickSwitchPlugin : BaseUnityPlugin
     {
 #endif
@@ -88,7 +88,7 @@ namespace AnomalithQuickSwitch
                 if (swap == null || shortcut == null || speed == null)
                     throw new InvalidOperationException("The native weapon switch is unavailable.");
                 harmony.Patch(swap, prefix: PatchMethod(nameof(BeginSwap)), finalizer: PatchMethod(nameof(EndSwap)));
-                harmony.Patch(shortcut, postfix: PatchMethod(nameof(SelectScrollWeapon)));
+                harmony.Patch(shortcut, prefix: PatchMethod(nameof(SelectScrollWeapon)));
                 harmony.Patch(speed, postfix: PatchMethod(nameof(ApplySwapSpeed)));
 #else
                 harmony.Patch(swap, transpiler: new HarmonyMethod(
@@ -140,10 +140,14 @@ namespace AnomalithQuickSwitch
             activeSwap = new SwapContext(__instance, cycle ? scroll : 0f);
         }
 
-        private static void SelectScrollWeapon(Inventory __instance, ref WeaponBase __result)
+        private static bool SelectScrollWeapon(Inventory __instance, ref WeaponBase __result)
         {
-            if (activeSwap.Scroll != 0f)
-                __result = GetScrollWeapon(__instance, activeSwap.Player, activeSwap.Scroll);
+            if (activeSwap.Scroll == 0f)
+                return true;
+
+            // The native lookup opens the wheel before it returns a weapon.
+            __result = GetScrollWeapon(__instance, activeSwap.Player, activeSwap.Scroll);
+            return false;
         }
 
         private static void ApplySwapSpeed(WeaponBase __instance, ref float __result)
