@@ -1,0 +1,34 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "endless-alice-achievement-unlock",
+  "projectType": "library",
+  "sourceRoot": "endless-alice/mods/achievement-unlock/src",
+  "tags": [
+    "game:endless-alice",
+    "type:mod"
+  ],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "default",
+        "{workspaceRoot}/endless-alice/scripts/package-mod.mjs"
+      ],
+      "outputs": [
+        "{projectRoot}/bin/Release"
+      ],
+      "options": {
+        "cwd": "endless-alice/mods/achievement-unlock",
+        "command": "node package.mjs release"
+      }
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "cwd": "endless-alice/mods/achievement-unlock",
+        "command": "node package.mjs debug"
+      }
+    }
+  }
+}
