@@ -112,7 +112,7 @@ local function start()
             { projectile, owner, target }, 0, {}, true, nil, nil, 0)
     end
 
-    local function findTarget(owner, controller, origin, forward, projectile)
+    local function findTarget(owner, controller, origin, forward, projectile, launchOrigin)
         local candidates = {}
         gameplay:GetAllActorsOfClass(owner, npcClass, candidates)
 
@@ -133,7 +133,8 @@ local function start()
                         if sightDot >= minimumSightDot and score > bestScore and target:IsAlive() then
                             teams:SwitchTeamAttitude(owner, target, attitude)
                             if attitude.Result == hostileTeam
-                                and hasClearPath(owner, controller, origin, target, location, projectile) then
+                                and (not launchOrigin or controller:LineOfSightTo(target, origin, true))
+                                and hasClearPath(owner, controller, launchOrigin or origin, target, location, projectile) then
                                 bestTarget, bestScore = target, score
                             end
                         end
@@ -144,11 +145,11 @@ local function start()
         return bestTarget
     end
 
-    local function findCameraTarget(owner, controller)
+    local function findCameraTarget(owner, controller, projectile, launchOrigin)
         local camera = controller.PlayerCameraManager
         if valid(camera) then
             return findTarget(owner, controller, camera:GetCameraLocation(),
-                mathLibrary:GetForwardVector(camera:GetCameraRotation()))
+                mathLibrary:GetForwardVector(camera:GetCameraRotation()), projectile, launchOrigin)
         end
     end
 
@@ -274,9 +275,14 @@ local function start()
         local server = system:IsServer(owner)
         local target
         if not standalone and (not localController or not server) then
-            -- Use the same launch origin and direction for a guest's predicted and authoritative shots.
-            local forward = { X = velocity.X / speed, Y = velocity.Y / speed, Z = velocity.Z / speed }
-            target = findTarget(owner, controller, projectile:K2_GetActorLocation(), forward, projectile)
+            local launchOrigin = projectile:K2_GetActorLocation()
+            -- Look for the camera lock first. A nearby target can be in view but outside the muzzle's cone.
+            target = findCameraTarget(owner, controller, projectile, launchOrigin)
+            if not valid(target) then
+                -- Fall back to the shared shot direction when the camera has no eligible lock.
+                local forward = { X = velocity.X / speed, Y = velocity.Y / speed, Z = velocity.Z / speed }
+                target = findTarget(owner, controller, launchOrigin, forward, projectile)
+            end
         else
             target = findCameraTarget(owner, controller)
         end
