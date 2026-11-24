@@ -3,9 +3,11 @@ local build = require("build_options")
 local UEHelpers = require("UEHelpers")
 local createTargetMarker = require("target_marker")
 
+local penetratingArrow = "BP_Lea_Arrow_Penetrate_C"
 local characters = {
     BP_Alice_MainFire_Arrow_C = "Alice",
     BP_Lea_Arrow2_C = "Lea",
+    [penetratingArrow] = "Lea",
     BP_Mia_Bullet_Blast_C = "Mia",
     BP_Mia_Bullet_Blast_Path_C = "Mia",
 }
@@ -65,6 +67,7 @@ local function start()
     local markerFailed = false
     local scopedTag = { TagName = FName("Status.AimDownSight") }
     local obstacleProfile = FName("AimAssistTraceObstacles")
+    local piercingLocks = {}
 
     local function showTarget(owner, target)
         if markerFailed then
@@ -193,7 +196,55 @@ local function start()
         end
     end)
 
-    local function applyHoming(projectile, character, strength)
+    local function stopPiercingHoming(projectile, movement, actor)
+        if not valid(actor) or not movement.bIsHomingProjectile then
+            return
+        end
+        local target = movement.HomingTargetComponent:get()
+        local targetActor = valid(target) and target:GetOwner()
+        if valid(targetActor) and targetActor:GetAddress() == actor:GetAddress() then
+            -- Keep the current velocity so the arrow can pierce enemies behind the locked target.
+            movement.bIsHomingProjectile = false
+            piercingLocks[projectile:GetAddress()] = nil
+        end
+    end
+
+    local function piercingMovement(projectile)
+        if valid(projectile) and piercingLocks[projectile:GetAddress()] and projectile.bAlreadyHit then
+            local movement = projectile.ProjectileMovement
+            if valid(movement) then
+                return movement
+            end
+        end
+    end
+
+    RegisterEndPlayPreHook(function(context)
+        local actor = context:get()
+        if valid(actor) then
+            piercingLocks[actor:GetAddress()] = nil
+        end
+    end)
+
+    local function beforeHit() end
+    RegisterHook("/Script/Demo.TPSProjectile:NotifyProjectileHitFromOverlap", beforeHit, function(context, _, otherActor)
+        local projectile = context:get()
+        local movement = piercingMovement(projectile)
+        if movement then
+            stopPiercingHoming(projectile, movement, otherActor:get())
+        end
+    end)
+    RegisterHook("/Script/Demo.TPSProjectile:NotifyProjectileHit", beforeHit, function(context, hitResult)
+        local projectile = context:get()
+        local movement = piercingMovement(projectile)
+        if movement then
+            local component = hitResult:get().Component:get()
+            if valid(component) then
+                stopPiercingHoming(projectile, movement, component:GetOwner())
+            end
+        end
+    end)
+
+    local function applyHoming(projectile, projectileName, character, strength)
         -- A guest's predicted projectile and the host's authoritative projectile each have local authority.
         -- Replicated proxies use the host's movement updates.
         if not projectile:HasAuthority() then
@@ -253,6 +304,9 @@ local function start()
         end
         movement.HomingAccelerationMagnitude = wandPointShotSpeed * fullStrengthTurnRate * strength
         movement.bIsHomingProjectile = true
+        if projectileName == penetratingArrow then
+            piercingLocks[projectile:GetAddress()] = true
+        end
         if coopEnabled and server and not standalone and projectile.bReplicates then
             projectile:SetReplicateMovement(true)
         end
@@ -267,13 +321,14 @@ local function start()
         if not valid(projectile) or not projectile:IsA(projectileClass) then
             return
         end
-        local character = characters[projectile:GetClass():GetFName():ToString()]
+        local projectileName = projectile:GetClass():GetFName():ToString()
+        local character = characters[projectileName]
         local strength = settings[character]
         if not strength or strength == 0 then
             return
         end
 
-        local ok, errorMessage = pcall(applyHoming, projectile, character, strength)
+        local ok, errorMessage = pcall(applyHoming, projectile, projectileName, character, strength)
         if not ok and not warned[character] then
             warned[character] = true
             log(character .. " homing failed: " .. tostring(errorMessage))

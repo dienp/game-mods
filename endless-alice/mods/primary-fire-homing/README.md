@@ -13,6 +13,7 @@ Edit `ue4ss\Mods\PrimaryFireHoming\Scripts\settings.lua` before launching to set
 ## Playtest
 
 - Select Alice in Radish Machine Gun mode. With a visible enemy a little to the side of the crosshair, look for Shibako's lock-on marker before firing. Hold left click and watch the shots bend toward the marked enemy. Repeat with Lea's Archery and Mia's unscoped Burst Shot.
+- With Lea's Powerful Penetration, line up two enemies and lock onto the closer one. Check that the arrow homes into the first enemy and continues through toward the second.
 - Fire into an empty area, then toward an enemy behind cover. Shots should follow their normal trajectory when there is no eligible target.
 - In co-op, host a lobby and invite a guest. Check that both players see a local lock-on marker and their eligible shots track targets.
 - Try Alice's cannon and Mia's scoped shot to check their original behavior. Compare an eligible attack at strength 100 and 25, then with its toggle disabled.
