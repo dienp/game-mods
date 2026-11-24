@@ -16,6 +16,7 @@ local pawns = {
     BP_Mia_C = "Mia",
 }
 
+local coopEnabled = defaults.EnableCoop ~= false
 local settings = {}
 for _, character in ipairs({ "Alice", "Lea", "Mia" }) do
     local entry = defaults[character] or {}
@@ -63,6 +64,7 @@ local function start()
     local updateMarker = createTargetMarker(gameplay, build.Debug)
     local markerFailed = false
     local scopedTag = { TagName = FName("Status.AimDownSight") }
+    local obstacleProfile = FName("AimAssistTraceObstacles")
 
     local function showTarget(owner, target)
         if markerFailed then
@@ -76,27 +78,38 @@ local function start()
         end
     end
 
-    local function isSolo(controller, owner)
-        if not controller:IsLocalController() then
-            return false
-        end
+    local function isSupportedSession(controller, owner)
+        local localController = controller:IsLocalController()
         if system:IsStandalone(owner) then
-            return true
+            return localController
         end
-        if not system:IsServer(owner) or system:IsDedicatedServer(owner) then
+        if system:IsDedicatedServer(owner) then
             return false
         end
+
+        local server = system:IsServer(owner)
+        if coopEnabled then
+            return server or localController
+        end
+        if not server or not localController then
+            return false
+        end
+
         local gameState = gameplay:GetGameState(owner)
         return valid(gameState) and #gameState.PlayerArray == 1
     end
 
-    local function findTarget(owner, controller)
-        local camera = controller.PlayerCameraManager
-        if not valid(camera) then
-            return
+    local function hasClearPath(owner, controller, origin, target, location, projectile)
+        if not projectile then
+            return controller:LineOfSightTo(target, origin, true)
         end
-        local origin = camera:GetCameraLocation()
-        local forward = mathLibrary:GetForwardVector(camera:GetCameraRotation())
+
+        -- The launch trace starts inside the projectile, so explicitly ignore its collision.
+        return not system:LineTraceSingleByProfile(projectile, origin, location, obstacleProfile, false,
+            { projectile, owner, target }, 0, {}, true, nil, nil, 0)
+    end
+
+    local function findTarget(owner, controller, origin, forward, projectile)
         local candidates = {}
         gameplay:GetAllActorsOfClass(owner, npcClass, candidates)
 
@@ -116,7 +129,8 @@ local function start()
                         local score = sightDot - 0.25 * distance / range
                         if sightDot >= minimumSightDot and score > bestScore and target:IsAlive() then
                             teams:SwitchTeamAttitude(owner, target, attitude)
-                            if attitude.Result == hostileTeam and controller:LineOfSightTo(target, origin, true) then
+                            if attitude.Result == hostileTeam
+                                and hasClearPath(owner, controller, origin, target, location, projectile) then
                                 bestTarget, bestScore = target, score
                             end
                         end
@@ -127,9 +141,17 @@ local function start()
         return bestTarget
     end
 
+    local function findCameraTarget(owner, controller)
+        local camera = controller.PlayerCameraManager
+        if valid(camera) then
+            return findTarget(owner, controller, camera:GetCameraLocation(),
+                mathLibrary:GetForwardVector(camera:GetCameraRotation()))
+        end
+    end
+
     local function previewTarget()
         local controller = UEHelpers.GetPlayerController()
-        if not valid(controller) then
+        if not valid(controller) or not controller:IsLocalController() then
             return
         end
         local owner = controller:K2_GetPawn()
@@ -138,7 +160,7 @@ local function start()
         end
         local character = pawns[owner:GetClass():GetFName():ToString()]
         local strength = settings[character]
-        if not strength or strength == 0 or not isSolo(controller, owner)
+        if not strength or strength == 0 or not isSupportedSession(controller, owner)
             or not owner:IsAlive() or gameplay:IsGamePaused(owner) then
             return
         end
@@ -151,7 +173,7 @@ local function start()
                 return
             end
         end
-        return owner, findTarget(owner, controller)
+        return owner, findCameraTarget(owner, controller)
     end
 
     local warnedPreview = false
@@ -172,12 +194,17 @@ local function start()
     end)
 
     local function applyHoming(projectile, character, strength)
+        -- A guest's predicted projectile and the host's authoritative projectile each have local authority.
+        -- Replicated proxies use the host's movement updates.
+        if not projectile:HasAuthority() then
+            return
+        end
         local owner = projectile:GetOwner()
         if not valid(owner) or not owner:IsA(playerClass) then
             return
         end
         local controller = owner:GetController()
-        if not valid(controller) or not isSolo(controller, owner) then
+        if not valid(controller) or not controller:IsPlayerController() or not isSupportedSession(controller, owner) then
             return
         end
 
@@ -191,8 +218,20 @@ local function start()
             return
         end
 
-        local target = findTarget(owner, controller)
-        showTarget(owner, target)
+        local localController = controller:IsLocalController()
+        local standalone = system:IsStandalone(owner)
+        local server = system:IsServer(owner)
+        local target
+        if not standalone and (not localController or not server) then
+            -- Use the same launch origin and direction for a guest's predicted and authoritative shots.
+            local forward = { X = velocity.X / speed, Y = velocity.Y / speed, Z = velocity.Z / speed }
+            target = findTarget(owner, controller, projectile:K2_GetActorLocation(), forward, projectile)
+        else
+            target = findCameraTarget(owner, controller)
+        end
+        if localController then
+            showTarget(owner, target)
+        end
         if not valid(target) then
             return
         end
@@ -214,6 +253,9 @@ local function start()
         end
         movement.HomingAccelerationMagnitude = wandPointShotSpeed * fullStrengthTurnRate * strength
         movement.bIsHomingProjectile = true
+        if coopEnabled and server and not standalone and projectile.bReplicates then
+            projectile:SetReplicateMovement(true)
+        end
         if build.Debug then
             log(("%s tracking %s at %d%%"):format(character, target:GetFullName(), math.floor(strength * 100 + 0.5)))
         end
@@ -237,7 +279,7 @@ local function start()
             log(character .. " homing failed: " .. tostring(errorMessage))
         end
     end)
-    log("Loaded")
+    log(coopEnabled and "Loaded (co-op enabled)" or "Loaded")
 end
 
 ExecuteInGameThread(start)

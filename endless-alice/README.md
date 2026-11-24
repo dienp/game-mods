@@ -9,4 +9,4 @@ This directory uses the root Nx workspace and npm lockfile. The game uses Unreal
 
 ## Release
 
-[Endless Alice Mods v1.0.0](https://github.com/dienp/game-mods/releases/tag/endless-alice-v1.0.0) includes ZIPs for both mods. Install UE4SS once, then extract each ZIP you want into the game's `ue4ss` directory.
+[Endless Alice Mods v1.0.1](https://github.com/dienp/game-mods/releases/tag/endless-alice-v1.0.1) includes both standalone mod ZIPs and a fresh-install bundle with UE4SS 4.0.0. Install the same Primary Fire Homing version on the host and guests for co-op.
